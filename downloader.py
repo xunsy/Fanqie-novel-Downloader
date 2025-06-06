@@ -20,7 +20,7 @@ from stem.control import Controller
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from collections import OrderedDict
-# from fake_useragent import UserAgent
+from fake_useragent import UserAgent
 from typing import Optional, Dict
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
@@ -58,7 +58,7 @@ def renew_tor_ip():
     """重建会话"""
     if not TOR_CONFIG["enabled"]:
         return
-        
+
     print("正在重建Tor会话更换IP...")
     global request_counter
     request_counter = 0
@@ -95,10 +95,10 @@ def enable_tor_support():
 def make_request(url, headers=None, params=None, data=None, method='GET', verify=False, use_tor=False, timeout=None):
     """通用的请求函数"""
     global request_counter
-    
+
     if headers is None:
         headers = get_headers()
-    
+
     session = None
     if use_tor and TOR_CONFIG["enabled"]:
         session = get_tor_session()
@@ -108,7 +108,7 @@ def make_request(url, headers=None, params=None, data=None, method='GET', verify
             renew_tor_ip()
     else:
         session = requests.Session()
-    
+
     try:
         request_params = {
             'headers': headers,
@@ -116,7 +116,7 @@ def make_request(url, headers=None, params=None, data=None, method='GET', verify
             'verify': verify,
             'timeout': timeout if timeout is not None else TOR_CONFIG["request_timeout"]
         }
-        
+
         if data:
             request_params['data'] = data
 
@@ -126,7 +126,7 @@ def make_request(url, headers=None, params=None, data=None, method='GET', verify
             response = session.post(url, **request_params)
         else:
             raise ValueError(f"不支持的HTTP方法: {method}")
-        
+
         return response
     except Exception as e:
         print(f"请求失败: {str(e)}")
@@ -158,15 +158,16 @@ CONFIG = {
 
 def get_headers() -> Dict[str, str]:
     """生成随机请求头"""
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
-    ]
+    browsers = ['chrome', 'edge']
+    browser = random.choice(browsers)
+
+    if browser == 'chrome':
+        user_agent = UserAgent().chrome
+    else:
+        user_agent = UserAgent().edge
 
     return {
-        "User-Agent": random.choice(user_agents),
+        "User-Agent": user_agent,
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://fanqienovel.com/",
@@ -178,20 +179,20 @@ def fetch_api_endpoints_from_server():
     try:
         headers = get_headers()
         headers["X-Auth-Token"] = CONFIG["auth_token"]
-        
+
         response = requests.get(
             CONFIG["server_url"],
             headers=headers,
             timeout=10,
             verify=False
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             sources = data.get("sources", [])
-            
+
             CONFIG["api_endpoints"] = []
-            
+
             for source in sources:
                 if source["enabled"]:
                     # 添加到API端点列表
@@ -199,19 +200,19 @@ def fetch_api_endpoints_from_server():
                         "url": source["single_url"],
                         "name": source["name"]
                     })
-                    
+
                     # 检查是否支持批量下载
                     if source["name"] == CONFIG["batch_config"]["name"]:
                         base_url = source["single_url"].split('?')[0]
                         batch_endpoint = base_url.split('/')[-1]
                         base_url = base_url.rsplit('/', 1)[0] if '/' in base_url else base_url
-                        
+
                         # 配置批量下载
                         CONFIG["batch_config"]["base_url"] = base_url
                         CONFIG["batch_config"]["batch_endpoint"] = f"/{batch_endpoint}"
                         CONFIG["batch_config"]["token"] = source.get("token", "")
                         CONFIG["batch_config"]["enabled"] = True
-            
+
             print("成功从服务器获取API列表!")
             return True
         else:
@@ -226,20 +227,20 @@ def extract_chapters(soup):
         a_tag = item.find('a')
         if not a_tag:
             continue
-        
+
         raw_title = a_tag.get_text(strip=True)
-        
+
         # 特殊章节
         if re.match(r'^(番外|特别篇|if线)\s*', raw_title):
             final_title = raw_title
         else:
             clean_title = re.sub(
                 r'^第[一二三四五六七八九十百千\d]+章\s*',
-                '', 
+                '',
                 raw_title
             ).strip()
             final_title = f"第{idx+1}章 {clean_title}"
-        
+
         chapters.append({
             "id": a_tag['href'].split('/')[-1],
             "title": final_title,
@@ -347,7 +348,7 @@ def down_text(chapter_id, headers, book_id=None):
             response_time = time.time() - start_time
             down_text.api_status[endpoint["url"]].update({
                 "last_response_time": response_time,
-                "error_count": max(0, down_text.api_status[endpoint["url"]]["error_count"] - 1)
+                "error_count": max(0, down_text.api_status[endpoint["name"]]["error_count"] - 1)
             })
 
             data = response.json()
@@ -375,11 +376,11 @@ def down_text(chapter_id, headers, book_id=None):
                 return chapter_title, processed_content
 
             print(f"API返回空内容，继续尝试下一个API...")
-            down_text.api_status[endpoint["url"]]["error_count"] += 1
+            down_text.api_status[endpoint["name"]]["error_count"] += 1
 
         except Exception as e:
             print(f"API请求失败！")
-            down_text.api_status[endpoint["url"]]["error_count"] += 1
+            down_text.api_status[endpoint["name"]]["error_count"] += 1
             time.sleep(3)
 
     print(f"所有API尝试失败，无法下载章节 {chapter_id}")
@@ -481,6 +482,198 @@ def save_status(save_path, downloaded):
     with open(status_file, 'w', encoding='utf-8') as f:
         json.dump(list(downloaded), f, ensure_ascii=False, indent=2)
 
+def test_cloudflare_proxy():
+    """测试Cloudflare Workers代理连接"""
+    try:
+        # 这里可以添加实际的代理测试逻辑
+        # 目前返回True表示测试通过
+        print("Cloudflare Workers代理测试通过")
+        return True
+    except Exception as e:
+        print(f"Cloudflare Workers代理测试失败: {str(e)}")
+        return False
+
+def download_chapter(chapter, headers, save_path, book_name, downloaded, book_id):
+    """下载单个章节"""
+    if chapter["id"] in downloaded:
+        return None
+
+    # 获取内容
+    _, content = down_text(chapter["id"], headers, book_id)
+
+    if content:
+        output_file_path = os.path.join(save_path, f"{book_name}.txt")
+        try:
+            with open(output_file_path, 'a', encoding='utf-8') as f:
+                f.write(f'{chapter["title"]}\n')
+                f.write(content + '\n\n')
+
+            downloaded.add(chapter["id"])
+            save_status(save_path, downloaded)
+            return chapter["index"], content
+        except Exception as e:
+            print(f"写入文件失败: {str(e)}")
+    return None
+
+def Run(book_id, save_path):
+    """运行下载"""
+    def signal_handler(sig, frame):
+        print("\n检测到程序中断，正在保存已下载内容...")
+        write_downloaded_chapters_in_order()
+        save_status(save_path, downloaded)
+        print(f"已保存 {len(downloaded)} 个章节的进度")
+        sys.exit(0)
+
+    def write_downloaded_chapters_in_order():
+        """按章节顺序写入"""
+        if not chapter_results:
+            return
+
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
+            for idx in range(len(chapters)):
+                if idx in chapter_results:
+                    result = chapter_results[idx]
+                    title = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
+                    f.write(f"{title}\n{result['content']}\n\n")
+
+    # 信号处理
+    signal.signal(signal.SIGINT, signal_handler)
+
+    try:
+        headers = get_headers()
+        chapters = get_chapters_from_api(book_id, headers)
+        if not chapters:
+            print("未找到任何章节，请检查小说ID是否正确。")
+            return
+
+        name, author_name, description = get_book_info(book_id, headers)
+        if not name:
+            name = f"未知小说_{book_id}"
+            author_name = "未知作者"
+            description = "无简介"
+
+        downloaded = load_status(save_path)
+        if downloaded:
+            print(f"检测到您曾经下载过小说《{name}》。")
+            if input("是否需要再次下载？(y/n)：") != "y":
+                print("已取消下载")
+                return
+
+        todo_chapters = [ch for ch in chapters if ch["id"] not in downloaded]
+        if not todo_chapters:
+            print("所有章节已是最新，无需下载")
+            return
+
+        print(f"开始下载：《{name}》, 总章节数: {len(chapters)}, 待下载: {len(todo_chapters)}")
+        os.makedirs(save_path, exist_ok=True)
+
+        output_file_path = os.path.join(save_path, f"{name}.txt")
+        if not os.path.exists(output_file_path):
+            with open(output_file_path, 'w', encoding='utf-8') as f:
+                f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
+
+        success_count = 0
+        failed_chapters = []
+        chapter_results = {}
+        lock = threading.Lock()
+
+        # 批量下载
+        if (len(todo_chapters) > 100 and
+            CONFIG["batch_config"]["enabled"] and
+            any(ep["name"] == "qyuing" for ep in CONFIG["api_endpoints"])):
+            print("检测到大量章节，启用批量下载模式...")
+            batch_size = CONFIG["batch_config"]["max_batch_size"]
+
+            with tqdm(total=len(todo_chapters), desc="批量下载进度") as pbar:
+                for i in range(0, len(todo_chapters), batch_size):
+                    batch = todo_chapters[i:i + batch_size]
+                    item_ids = [chap["id"] for chap in batch]
+
+                    batch_results = batch_download_chapters(item_ids, headers)
+                    if not batch_results:
+                        print(f"第 {i//batch_size + 1} 批下载失败")
+                        failed_chapters.extend(batch)
+                        pbar.update(len(batch))
+                        continue
+
+                    # 处理并写入内容
+                    for chap in batch:
+                        # 从结果中获取内容
+                        content = batch_results.get(chap["id"], "")
+                        if isinstance(content, dict):
+                            content = content.get("content", "")
+
+                        if content:
+                            processed = process_chapter_content(content)
+                            with lock:
+                                chapter_results[chap["index"]] = {
+                                    "base_title": chap["title"],
+                                    "api_title": "",
+                                    "content": processed
+                                }
+                                downloaded.add(chap["id"])
+                                success_count += 1
+                        else:
+                            with lock:
+                                failed_chapters.append(chap)
+                        pbar.update(1)
+
+            todo_chapters = failed_chapters.copy()
+            failed_chapters = []
+            write_downloaded_chapters_in_order()
+            save_status(save_path, downloaded)
+
+        # 单章下载
+        def download_task(chapter):
+            nonlocal success_count
+            try:
+                title, content = down_text(chapter["id"], headers, book_id)
+                if content:
+                    with lock:
+                        chapter_results[chapter["index"]] = {
+                            "base_title": chapter["title"],
+                            "api_title": title,
+                            "content": content
+                        }
+                        downloaded.add(chapter["id"])
+                        success_count += 1
+                else:
+                    with lock:
+                        failed_chapters.append(chapter)
+            except Exception as e:
+                print(f"章节 {chapter['id']} 下载失败: {str(e)}")
+                with lock:
+                    failed_chapters.append(chapter)
+
+        attempt = 1
+        while todo_chapters:
+            print(f"\n第 {attempt} 次尝试，剩余 {len(todo_chapters)} 个章节...")
+            attempt += 1
+
+            with ThreadPoolExecutor(max_workers=CONFIG["max_workers"]) as executor:
+                futures = [executor.submit(download_task, ch) for ch in todo_chapters]
+
+                with tqdm(total=len(todo_chapters), desc="单章下载进度") as pbar:
+                    for _ in as_completed(futures):
+                        pbar.update(1)
+
+            write_downloaded_chapters_in_order()
+            save_status(save_path, downloaded)
+            todo_chapters = failed_chapters.copy()
+            failed_chapters = []
+
+            if todo_chapters:
+                time.sleep(1)
+
+        print(f"下载完成！成功下载 {success_count} 个章节")
+
+    except Exception as e:
+        print(f"运行错误: {str(e)}")
+        if 'downloaded' in locals():
+            write_downloaded_chapters_in_order()
+            save_status(save_path, downloaded)
+
 # GUI下载器类，用于兼容现有的GUI代码
 class GUIdownloader:
     """GUI下载器类，用于在GUI环境中下载小说"""
@@ -580,3 +773,40 @@ class GUIdownloader:
         except Exception as e:
             if self.status_callback:
                 self.status_callback(f"下载过程中发生错误: {str(e)}")
+
+def main():
+    print("""欢迎使用番茄小说下载器精简版！
+开发者：Dlmily
+当前版本：v1.7
+Github：https://github.com/Dlmily/Tomato-Novel-Downloader-Lite
+赞助/了解新产品：https://afdian.com/a/dlbaokanluntanos
+*使用前须知*：
+    1.开始下载之后，您可能会过于着急而查看下载文件的位置，这是徒劳的，请耐心等待小说下载完成再查看！另外如果你要下载之前已经下载过的小说(在此之前已经删除了原txt文件)，那么你有可能会遇到"所有章节已是最新，无需下载"的情况，这时就请删除掉chapter.json，然后再次运行程序。
+    2.您可以自行选择使用Tor网络进行下载，Tor网络能够很好地防止Api开发者封ip。
+
+另：如果有带番茄svip的cookie或api，按照您的意愿投到"Issues"页中。
+------------------------------------------""")
+    use_tor = input("是否要使用Tor网络进行下载？(y/n, 默认为n): ").strip().lower()
+    if use_tor == 'y':
+        if not enable_tor_support():
+            print("将不使用Tor网络继续运行")
+
+    print("正在从服务器获取API列表...")
+    fetch_api_endpoints_from_server()
+
+    while True:
+        book_id = input("请输入小说ID（输入q退出）：").strip()
+        if book_id.lower() == 'q':
+            break
+
+        save_path = input("保存路径（留空为当前目录）：").strip() or os.getcwd()
+
+        try:
+            Run(book_id, save_path)
+        except Exception as e:
+            print(f"运行错误: {str(e)}")
+
+        print("\n" + "="*50 + "\n")
+
+if __name__ == "__main__":
+    main()

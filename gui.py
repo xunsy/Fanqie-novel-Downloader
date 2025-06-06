@@ -156,20 +156,6 @@ class NovelDownloaderGUI(ctk.CTk):
         self.output_format.grid(row=2, column=1, padx=5, pady=5, sticky="w")
         self.output_format.set("TXT")
 
-        # 下载模式选择
-        mode_label = ctk.CTkLabel(main_frame, text="下载模式:", anchor="w")
-        mode_label.grid(row=3, column=0, padx=(0, 10), pady=5, sticky="w")
-        self.download_mode = ctk.CTkSegmentedButton(main_frame, values=["API模式", "爬虫模式", "混合模式"])
-        self.download_mode.grid(row=3, column=1, padx=5, pady=5, sticky="w")
-
-        # 从配置加载默认下载模式
-        try:
-            default_mode = CONFIG.get("crawler", {}).get("default_mode", "api")
-            mode_map = {"api": "API模式", "crawler": "爬虫模式", "mixed": "混合模式"}
-            self.download_mode.set(mode_map.get(default_mode, "API模式"))
-        except Exception:
-            self.download_mode.set("API模式")
-
         # 下载按钮
         download_icon = self.icons.get("download")
         self.download_button = ctk.CTkButton(
@@ -183,7 +169,7 @@ class NovelDownloaderGUI(ctk.CTk):
             main_frame, text="停止下载", command=self._handle_stop_download_click, width=120,
             state="disabled"
         )
-        self.stop_download_button.grid(row=3, column=4, padx=5, pady=5, sticky="e")
+        self.stop_download_button.grid(row=2, column=4, padx=5, pady=5, sticky="e")
 
     def _setup_progress_frame(self):
         """设置显示下载进度条和状态标签的框架"""
@@ -365,12 +351,7 @@ class NovelDownloaderGUI(ctk.CTk):
         self.progress_bar.set(0)
         self.status_label.configure(text="准备下载...")
 
-        # 获取下载模式
-        mode_text = self.download_mode.get()
-        mode_map = {"API模式": "api", "爬虫模式": "crawler", "混合模式": "mixed"}
-        download_mode = mode_map.get(mode_text, "api")
-
-        self.log(f"准备下载 ID: {book_id_to_download}，模式: {mode_text}")
+        self.log(f"准备下载 ID: {book_id_to_download}")
 
         self.current_fq_downloader = GUIdownloader(
             book_id=book_id_to_download,
