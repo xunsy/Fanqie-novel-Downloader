@@ -723,6 +723,15 @@ class GUIdownloader:
             downloaded = load_status(self.save_path)
             todo_chapters = [ch for ch in chapters if ch["id"] not in downloaded]
 
+            # 计算总章节数和已下载章节数
+            total_chapters = len(chapters)
+            already_downloaded = len(downloaded)
+
+            # 设置初始进度（基于已下载的章节）
+            initial_progress = int(already_downloaded / total_chapters * 100) if total_chapters > 0 else 0
+            if self.progress_callback:
+                self.progress_callback(initial_progress)
+
             if not todo_chapters:
                 if self.status_callback:
                     self.status_callback("所有章节已是最新，无需下载")
@@ -738,14 +747,13 @@ class GUIdownloader:
                     f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
 
             success_count = 0
-            total_chapters = len(todo_chapters)
 
             for i, chapter in enumerate(todo_chapters):
                 if self.stop_flag:
                     break
 
                 if self.status_callback:
-                    self.status_callback(f"正在下载: {chapter['title']}")
+                    self.status_callback(f"正在下载: {chapter['title']} ({already_downloaded + i + 1}/{total_chapters})")
 
                 title, content = down_text(chapter["id"], headers, self.book_id)
                 if content:
@@ -757,8 +765,9 @@ class GUIdownloader:
                     save_status(self.save_path, downloaded)
                     success_count += 1
 
-                # 更新进度
-                progress = int((i + 1) / total_chapters * 100)
+                # 更新进度（基于总章节数）
+                current_downloaded = already_downloaded + i + 1
+                progress = int(current_downloaded / total_chapters * 100)
                 if self.progress_callback:
                     self.progress_callback(progress)
 

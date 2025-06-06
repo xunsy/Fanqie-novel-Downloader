@@ -356,7 +356,7 @@ class NovelDownloaderGUI(ctk.CTk):
         self.stop_download_button.configure(state="normal")
         self.is_downloading = True
         self.downloaded_chapters.clear()
-        self.progress_bar.set(0)
+        # 不要立即重置进度条，让下载器根据已下载章节设置初始进度
         self.status_label.configure(text="准备下载...")
 
         self.log(f"准备下载 ID: {book_id_to_download}")
