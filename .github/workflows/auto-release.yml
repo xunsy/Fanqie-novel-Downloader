@@ -1,0 +1,120 @@
+name: 自动编译发布
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取完整历史记录以便获取提交信息
+    
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        # 检查requirements.txt是否存在
+        if (Test-Path "requirements.txt") {
+          pip install -r requirements.txt
+        } else {
+          # 如果没有requirements.txt，安装基本依赖
+          pip install customtkinter requests beautifulsoup4 tqdm stem fake-useragent pycryptodome ebooklib lxml
+        }
+    
+    - name: 编译exe文件
+      run: |
+        # 设置控制台编码为UTF-8
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $env:PYTHONIOENCODING = "utf-8"
+
+        # 检查spec文件是否存在
+        if (Test-Path "build_exe.spec") {
+          echo "使用现有的spec文件编译..."
+          pyinstaller build_exe.spec --clean
+        } else {
+          echo "使用默认配置编译..."
+          pyinstaller --onefile --windowed --name "番茄小说下载器" main.py
+        }
+    
+    - name: 生成版本号和发布信息
+      id: release_info
+      run: |
+        # 生成基于日期的版本号
+        $version = "v$(Get-Date -Format 'yyyy.MM.dd.HHmm')"
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        
+        # 获取最近20次提交信息
+        $commits = git log --oneline -20 --pretty=format:"- %s (%an)"
+        $release_body = @"
+        ## 🚀 自动发布版本 $version
+        
+        ### 📅 发布时间
+        $(Get-Date -Format 'yyyy年MM月dd日 HH:mm:ss')
+        
+        ### 📝 更新内容（最近20次提交）
+        $commits
+        
+        ### 💾 下载说明
+        - 下载 ``番茄小说下载器.exe`` 文件
+        - 双击运行即可使用，无需安装Python环境
+        - 支持Windows 10及以上系统
+        
+        ### ⚠️ 注意事项
+        - 首次运行可能被杀毒软件误报，请添加信任
+        - 建议在下载前关闭杀毒软件的实时保护
+        - 如有问题请在Issues中反馈
+        "@
+        
+        # 将发布内容写入文件
+        $release_body | Out-File -FilePath release_body.txt -Encoding UTF8
+        echo "release_body_file=release_body.txt" >> $env:GITHUB_OUTPUT
+    
+    - name: 检查文件是否存在
+      run: |
+        if (Test-Path "dist/番茄小说下载器.exe") {
+          echo "✅ exe文件编译成功"
+          $size = (Get-Item "dist/番茄小说下载器.exe").Length / 1MB
+          echo "📦 文件大小: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ exe文件编译失败"
+          exit 1
+        }
+    
+    - name: 创建Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.release_info.outputs.version }}
+        release_name: 番茄小说下载器 ${{ steps.release_info.outputs.version }}
+        body_path: ${{ steps.release_info.outputs.release_body_file }}
+        draft: false
+        prerelease: false
+    
+    - name: 上传exe文件
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: dist/番茄小说下载器.exe
+        asset_name: 番茄小说下载器.exe
+        asset_content_type: application/octet-stream
+    
+    - name: 发布完成通知
+      run: |
+        echo "🎉 发布完成！"
+        echo "📦 版本号: ${{ steps.release_info.outputs.version }}"
+        echo "🔗 下载链接: https://github.com/${{ github.repository }}/releases/tag/${{ steps.release_info.outputs.version }}"
