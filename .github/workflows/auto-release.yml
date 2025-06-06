@@ -5,6 +5,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -91,27 +95,17 @@ jobs:
           exit 1
         }
     
-    - name: 创建Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: 创建Release并上传文件
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.release_info.outputs.version }}
-        release_name: 番茄小说下载器 ${{ steps.release_info.outputs.version }}
+        name: 番茄小说下载器 ${{ steps.release_info.outputs.version }}
         body_path: ${{ steps.release_info.outputs.release_body_file }}
+        files: dist/番茄小说下载器.exe
         draft: false
         prerelease: false
-    
-    - name: 上传exe文件
-      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: dist/番茄小说下载器.exe
-        asset_name: 番茄小说下载器.exe
-        asset_content_type: application/octet-stream
     
     - name: 发布完成通知
       run: |
