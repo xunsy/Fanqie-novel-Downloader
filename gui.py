@@ -36,19 +36,26 @@ class NovelDownloaderGUI(ctk.CTk):
         super().__init__()
 
         # 基本窗口设置
-        self.version = "1.3.0"
-        self.title(f"番茄小说下载器 v{self.version}")
-        
-        # 从配置加载窗口大小
-        try:
-            window_settings = CONFIG.get("window", {})
-            if not isinstance(window_settings, dict):
-                window_settings = {}
-            default_geometry = window_settings.get("default_geometry", "800x600")
-            self.geometry(default_geometry)
-        except Exception as e:
-            print(f"加载窗口几何尺寸时出错: {e}，使用默认值 800x600")
-            self.geometry("800x600")
+        self.version = "1.7"
+        self.title(f"🍅 番茄小说下载器 Pro v{self.version} - 智能下载引擎")
+
+        # 设置现代化窗口大小
+        self.geometry("1000x750")
+        self.minsize(900, 650)
+
+        # 自定义颜色主题
+        self.colors = {
+            "primary": "#1f538d",      # 深蓝色
+            "secondary": "#14375e",    # 更深蓝色
+            "accent": "#00d4ff",       # 科技蓝
+            "success": "#00ff88",      # 成功绿
+            "warning": "#ffaa00",      # 警告橙
+            "error": "#ff4757",        # 错误红
+            "background": "#0a0e27",   # 深色背景
+            "surface": "#1a1d3a",      # 表面色
+            "text": "#ffffff",         # 主文本
+            "text_secondary": "#b8bcc8" # 次要文本
+        }
 
         # 状态变量
         self.is_downloading = False
@@ -104,40 +111,117 @@ class NovelDownloaderGUI(ctk.CTk):
 
     def _setup_main_frame(self):
         """设置包含输入字段和主要操作按钮的顶部框架"""
-        main_frame = ctk.CTkFrame(self)
-        main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
+        # 创建带有渐变效果的主框架
+        main_frame = ctk.CTkFrame(
+            self,
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors["accent"]
+        )
+        main_frame.grid(row=0, column=0, padx=25, pady=25, sticky="ew")
+
+        # 添加标题区域
+        title_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        title_frame.grid(row=0, column=0, columnspan=4, padx=20, pady=(20, 10), sticky="ew")
+
+        title_label = ctk.CTkLabel(
+            title_frame,
+            text="🚀 智能下载控制台",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        title_label.pack(side="left")
+
+        # 状态指示器
+        self.connection_status = ctk.CTkLabel(
+            title_frame,
+            text="🟢 API已连接",
+            font=ctk.CTkFont(size=12),
+            text_color=self.colors["success"]
+        )
+        self.connection_status.pack(side="right")
 
         # 配置网格权重，让输入框可以拉伸
         main_frame.grid_columnconfigure(1, weight=1)
         main_frame.grid_columnconfigure(3, weight=0)  # 按钮列不拉伸
 
         # 第一行：小说ID输入和搜索按钮，右侧是开始下载按钮
-        id_label = ctk.CTkLabel(main_frame, text="小说ID:", anchor="w", width=80)
-        id_label.grid(row=0, column=0, padx=(10, 10), pady=12, sticky="w")
+        id_label = ctk.CTkLabel(
+            main_frame,
+            text="📚 小说ID:",
+            anchor="w",
+            width=90,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        id_label.grid(row=1, column=0, padx=(20, 10), pady=15, sticky="w")
 
-        self.novel_id = ctk.CTkEntry(main_frame, placeholder_text="输入小说ID或书名")
-        self.novel_id.grid(row=0, column=1, padx=(0, 10), pady=12, sticky="ew")
+        self.novel_id = ctk.CTkEntry(
+            main_frame,
+            placeholder_text="🔍 输入小说ID或书名进行智能识别",
+            height=40,
+            corner_radius=10,
+            border_width=2,
+            border_color=self.colors["secondary"],
+            font=ctk.CTkFont(size=13)
+        )
+        self.novel_id.grid(row=1, column=1, padx=(0, 15), pady=15, sticky="ew")
 
         search_icon = self.icons.get("search")
         self.search_button = ctk.CTkButton(
-            main_frame, text="搜索", command=self.handle_search_button_click, width=80,
-            image=search_icon, compound="left" if search_icon else "none"
+            main_frame,
+            text="🔍 搜索",
+            command=self.handle_search_button_click,
+            width=90,
+            height=40,
+            corner_radius=10,
+            fg_color=self.colors["secondary"],
+            hover_color=self.colors["primary"],
+            border_width=2,
+            border_color=self.colors["accent"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+            image=search_icon,
+            compound="left" if search_icon else "none"
         )
-        self.search_button.grid(row=0, column=2, padx=(0, 20), pady=12)
+        self.search_button.grid(row=1, column=2, padx=(0, 20), pady=15)
 
         download_icon = self.icons.get("download")
         self.download_button = ctk.CTkButton(
-            main_frame, text="开始下载", command=self.start_download, width=120,
-            image=download_icon, compound="left" if download_icon else "none"
+            main_frame,
+            text="⚡ 开始下载",
+            command=self.start_download,
+            width=140,
+            height=40,
+            corner_radius=10,
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["success"],
+            font=ctk.CTkFont(size=14, weight="bold"),
+            image=download_icon,
+            compound="left" if download_icon else "none"
         )
-        self.download_button.grid(row=0, column=3, padx=(0, 10), pady=12)
+        self.download_button.grid(row=1, column=3, padx=(0, 20), pady=15)
 
         # 第二行：保存路径输入和浏览按钮，右侧是停止下载按钮
-        path_label = ctk.CTkLabel(main_frame, text="保存路径:", anchor="w", width=80)
-        path_label.grid(row=1, column=0, padx=(10, 10), pady=12, sticky="w")
+        path_label = ctk.CTkLabel(
+            main_frame,
+            text="💾 保存路径:",
+            anchor="w",
+            width=90,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        path_label.grid(row=2, column=0, padx=(20, 10), pady=15, sticky="w")
 
-        self.save_path = ctk.CTkEntry(main_frame, placeholder_text="选择保存位置")
-        self.save_path.grid(row=1, column=1, padx=(0, 10), pady=12, sticky="ew")
+        self.save_path = ctk.CTkEntry(
+            main_frame,
+            placeholder_text="📁 选择文件保存位置",
+            height=40,
+            corner_radius=10,
+            border_width=2,
+            border_color=self.colors["secondary"],
+            font=ctk.CTkFont(size=13)
+        )
+        self.save_path.grid(row=2, column=1, padx=(0, 15), pady=15, sticky="ew")
 
         # 从配置加载默认保存路径
         try:
@@ -152,100 +236,319 @@ class NovelDownloaderGUI(ctk.CTk):
 
         folder_icon = self.icons.get("folder")
         browse_button = ctk.CTkButton(
-            main_frame, text="浏览", command=self.browse_folder, width=80,
-            image=folder_icon, compound="left" if folder_icon else "none"
+            main_frame,
+            text="📂 浏览",
+            command=self.browse_folder,
+            width=90,
+            height=40,
+            corner_radius=10,
+            fg_color=self.colors["secondary"],
+            hover_color=self.colors["primary"],
+            border_width=2,
+            border_color=self.colors["accent"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+            image=folder_icon,
+            compound="left" if folder_icon else "none"
         )
-        browse_button.grid(row=1, column=2, padx=(0, 20), pady=12)
+        browse_button.grid(row=2, column=2, padx=(0, 20), pady=15)
 
         self.stop_download_button = ctk.CTkButton(
-            main_frame, text="停止下载", command=self._handle_stop_download_click, width=120,
+            main_frame,
+            text="⏹️ 停止下载",
+            command=self._handle_stop_download_click,
+            width=140,
+            height=40,
+            corner_radius=10,
+            fg_color=self.colors["error"],
+            hover_color="#cc3a47",
+            font=ctk.CTkFont(size=14, weight="bold"),
             state="disabled"
         )
-        self.stop_download_button.grid(row=1, column=3, padx=(0, 10), pady=12)
+        self.stop_download_button.grid(row=2, column=3, padx=(0, 20), pady=15)
 
         # 第三行：输出格式选择
-        format_label = ctk.CTkLabel(main_frame, text="输出格式:", anchor="w", width=80)
-        format_label.grid(row=2, column=0, padx=(10, 10), pady=12, sticky="w")
+        format_label = ctk.CTkLabel(
+            main_frame,
+            text="📄 输出格式:",
+            anchor="w",
+            width=90,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        format_label.grid(row=3, column=0, padx=(20, 10), pady=(15, 20), sticky="w")
 
-        self.output_format = ctk.CTkSegmentedButton(main_frame, values=["TXT", "EPUB"])
-        self.output_format.grid(row=2, column=1, padx=(0, 10), pady=12, sticky="w")
-        self.output_format.set("TXT")
+        self.output_format = ctk.CTkSegmentedButton(
+            main_frame,
+            values=["📝 TXT", "📖 EPUB"],
+            corner_radius=10,
+            border_width=2,
+            fg_color=self.colors["secondary"],
+            selected_color=self.colors["accent"],
+            selected_hover_color=self.colors["primary"],
+            unselected_color=self.colors["surface"],
+            unselected_hover_color=self.colors["secondary"],
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        self.output_format.grid(row=3, column=1, padx=(0, 15), pady=(15, 20), sticky="w")
+        self.output_format.set("📝 TXT")
+
+    def get_output_format(self):
+        """获取选择的输出格式（去除图标）"""
+        format_text = self.output_format.get()
+        if "TXT" in format_text:
+            return "TXT"
+        elif "EPUB" in format_text:
+            return "EPUB"
+        return "TXT"  # 默认值
 
     def _setup_progress_frame(self):
         """设置显示下载进度条和状态标签的框架"""
-        progress_frame = ctk.CTkFrame(self)
-        progress_frame.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="ew")
+        progress_frame = ctk.CTkFrame(
+            self,
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors["secondary"]
+        )
+        progress_frame.grid(row=1, column=0, padx=25, pady=(0, 25), sticky="ew")
         progress_frame.grid_columnconfigure(0, weight=1)
+
+        # 进度标题
+        progress_title = ctk.CTkLabel(
+            progress_frame,
+            text="📊 下载进度监控",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        progress_title.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
 
         # 进度条
         self.progress_var = ctk.DoubleVar(value=0)
-        self.progress_bar = ctk.CTkProgressBar(progress_frame, height=20)
-        self.progress_bar.grid(row=0, column=0, padx=15, pady=(15, 10), sticky="ew")
+        self.progress_bar = ctk.CTkProgressBar(
+            progress_frame,
+            height=25,
+            corner_radius=12,
+            border_width=2,
+            border_color=self.colors["secondary"],
+            progress_color=self.colors["accent"]
+        )
+        self.progress_bar.grid(row=1, column=0, padx=20, pady=(0, 15), sticky="ew")
         self.progress_bar.set(0)
 
         # 状态标签
-        self.status_label = ctk.CTkLabel(progress_frame, text="准备就绪", anchor="center",
-                                       font=ctk.CTkFont(size=14))
-        self.status_label.grid(row=1, column=0, padx=15, pady=(0, 10), sticky="ew")
+        self.status_label = ctk.CTkLabel(
+            progress_frame,
+            text="🚀 系统就绪 - 等待下载指令",
+            anchor="center",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        self.status_label.grid(row=2, column=0, padx=20, pady=(0, 15), sticky="ew")
+
+        # 状态指示器框架
+        status_frame = ctk.CTkFrame(progress_frame, fg_color="transparent")
+        status_frame.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="ew")
+        status_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         # Tor状态标签
         tor_enabled = CONFIG.get("tor", {}).get("enabled", False)
         tor_status_text = "🔒 Tor: 已启用" if tor_enabled else "🔓 Tor: 已禁用"
-        self.tor_status_label = ctk.CTkLabel(progress_frame, text=tor_status_text, anchor="center",
-                                           text_color="green" if tor_enabled else "orange",
-                                           font=ctk.CTkFont(size=12))
-        self.tor_status_label.grid(row=2, column=0, padx=15, pady=(0, 15), sticky="ew")
+        self.tor_status_label = ctk.CTkLabel(
+            status_frame,
+            text=tor_status_text,
+            anchor="center",
+            text_color=self.colors["success"] if tor_enabled else self.colors["warning"],
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.tor_status_label.grid(row=0, column=0, padx=10, pady=5)
+
+        # API状态标签
+        self.api_status_label = ctk.CTkLabel(
+            status_frame,
+            text="🌐 API: 已连接",
+            anchor="center",
+            text_color=self.colors["success"],
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.api_status_label.grid(row=0, column=1, padx=10, pady=5)
+
+        # 速度显示标签
+        self.speed_label = ctk.CTkLabel(
+            status_frame,
+            text="⚡ 速度: 待机中",
+            anchor="center",
+            text_color=self.colors["text_secondary"],
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.speed_label.grid(row=0, column=2, padx=10, pady=5)
 
     def _setup_log_frame(self):
         """设置包含日志输出文本框的框架"""
-        log_frame = ctk.CTkFrame(self)
-        log_frame.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        log_frame = ctk.CTkFrame(
+            self,
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors["secondary"]
+        )
+        log_frame.grid(row=2, column=0, padx=25, pady=(0, 25), sticky="nsew")
         log_frame.grid_columnconfigure(0, weight=1)
         log_frame.grid_rowconfigure(1, weight=1)
 
+        # 日志标题框架
+        log_title_frame = ctk.CTkFrame(log_frame, fg_color="transparent")
+        log_title_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
+        log_title_frame.grid_columnconfigure(0, weight=1)
+
         # 日志标题
-        log_title = ctk.CTkLabel(log_frame, text="📋 下载日志", anchor="w",
-                               font=ctk.CTkFont(size=14, weight="bold"))
-        log_title.grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        log_title = ctk.CTkLabel(
+            log_title_frame,
+            text="🔍 实时日志监控",
+            anchor="w",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        log_title.pack(side="left")
+
+        # 日志状态指示器
+        self.log_status = ctk.CTkLabel(
+            log_title_frame,
+            text="🟢 系统运行正常",
+            font=ctk.CTkFont(size=12),
+            text_color=self.colors["success"]
+        )
+        self.log_status.pack(side="right")
 
         # 日志文本框
-        self.log_text = ctk.CTkTextbox(log_frame, wrap="word", font=ctk.CTkFont(size=12))
-        self.log_text.grid(row=1, column=0, padx=15, pady=(0, 15), sticky="nsew")
+        self.log_text = ctk.CTkTextbox(
+            log_frame,
+            wrap="word",
+            font=ctk.CTkFont(size=12),
+            corner_radius=10,
+            border_width=2,
+            border_color=self.colors["surface"]
+        )
+        self.log_text.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         self.log_text.configure(state="disabled")
 
     def _setup_bottom_frame(self):
         """设置包含设置和清空日志按钮的底部框架"""
         bottom_frame = ctk.CTkFrame(self, fg_color="transparent")
-        bottom_frame.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="ew")
+        bottom_frame.grid(row=3, column=0, padx=25, pady=(0, 25), sticky="ew")
         bottom_frame.grid_columnconfigure(1, weight=1)  # 中间空间拉伸
 
         # 设置按钮（左侧）
         settings_icon = self.icons.get("settings")
         settings_button = ctk.CTkButton(
-            bottom_frame, text="设置", command=self.open_settings, width=120,
-            image=settings_icon, compound="left" if settings_icon else "none"
+            bottom_frame,
+            text="⚙️ 高级设置",
+            command=self.open_settings,
+            width=140,
+            height=45,
+            corner_radius=12,
+            fg_color=self.colors["secondary"],
+            hover_color=self.colors["primary"],
+            border_width=2,
+            border_color=self.colors["accent"],
+            font=ctk.CTkFont(size=14, weight="bold"),
+            image=settings_icon,
+            compound="left" if settings_icon else "none"
         )
-        settings_button.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
+        settings_button.grid(row=0, column=0, padx=(0, 15), pady=10, sticky="w")
+
+        # 版本信息标签（中间）
+        version_label = ctk.CTkLabel(
+            bottom_frame,
+            text=f"🍅 番茄小说下载器 Pro v{self.version} | 智能下载引擎",
+            font=ctk.CTkFont(size=12),
+            text_color=self.colors["text_secondary"]
+        )
+        version_label.grid(row=0, column=1, pady=10)
 
         # 清空日志按钮（右侧）
         clear_log_button = ctk.CTkButton(
-            bottom_frame, text="清空日志", command=self.clear_log, width=120
+            bottom_frame,
+            text="🗑️ 清空日志",
+            command=self.clear_log,
+            width=140,
+            height=45,
+            corner_radius=12,
+            fg_color=self.colors["warning"],
+            hover_color="#e6940a",
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        clear_log_button.grid(row=0, column=2, padx=(10, 0), pady=5, sticky="e")
+        clear_log_button.grid(row=0, column=2, padx=(15, 0), pady=10, sticky="e")
 
-    def log(self, message: str):
-        """向日志文本框添加一条消息"""
+    def log(self, message: str, level: str = "info"):
+        """向日志文本框添加一条带有时间戳和级别的消息"""
+        import datetime
+
+        # 获取当前时间
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+        # 根据级别添加图标和颜色
+        level_icons = {
+            "info": "ℹ️",
+            "success": "✅",
+            "warning": "⚠️",
+            "error": "❌",
+            "download": "⬇️",
+            "system": "🔧"
+        }
+
+        icon = level_icons.get(level, "ℹ️")
+        formatted_message = f"[{timestamp}] {icon} {message}"
+
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", message + "\n")
+        self.log_text.insert("end", formatted_message + "\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
         self.update_idletasks()
+
+        # 更新日志状态指示器
+        if level == "error":
+            self.log_status.configure(text="🔴 检测到错误", text_color=self.colors["error"])
+        elif level == "warning":
+            self.log_status.configure(text="🟡 注意警告", text_color=self.colors["warning"])
+        elif level == "download":
+            self.log_status.configure(text="🔵 正在下载", text_color=self.colors["accent"])
+        else:
+            self.log_status.configure(text="🟢 系统运行正常", text_color=self.colors["success"])
 
     def update_progress(self, value: float, status_text: str):
         """更新进度条和状态标签"""
         self.progress_var.set(value)
         self.progress_bar.set(value / 100)
-        self.status_label.configure(text=status_text)
+
+        # 添加进度图标和颜色
+        if value == 0:
+            icon = "🚀"
+            color = self.colors["text"]
+        elif value < 25:
+            icon = "🔄"
+            color = self.colors["accent"]
+        elif value < 50:
+            icon = "⚡"
+            color = self.colors["accent"]
+        elif value < 75:
+            icon = "🔥"
+            color = self.colors["warning"]
+        elif value < 100:
+            icon = "🎯"
+            color = self.colors["success"]
+        else:
+            icon = "🎉"
+            color = self.colors["success"]
+
+        formatted_status = f"{icon} {status_text} ({value:.1f}%)"
+        self.status_label.configure(text=formatted_status, text_color=color)
+
+        # 更新速度显示（模拟）
+        if value > 0 and value < 100:
+            self.speed_label.configure(text="⚡ 速度: 高速下载中", text_color=self.colors["success"])
+        elif value == 100:
+            self.speed_label.configure(text="✅ 速度: 下载完成", text_color=self.colors["success"])
+        else:
+            self.speed_label.configure(text="⚡ 速度: 待机中", text_color=self.colors["text_secondary"])
+
         self.update_idletasks()
 
     def update_tor_status(self):
@@ -288,7 +591,7 @@ class NovelDownloaderGUI(ctk.CTk):
             return
 
         # 这里可以添加搜索功能的实现
-        self.log(f"搜索功能暂未实现，输入内容: {input_text}")
+        self.log(f"搜索功能暂未实现，输入内容: {input_text}", "warning")
         messagebox.showinfo("提示", "搜索功能正在开发中，请直接输入小说ID进行下载")
 
 
