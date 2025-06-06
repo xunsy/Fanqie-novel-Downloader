@@ -158,13 +158,27 @@ CONFIG = {
 
 def get_headers() -> Dict[str, str]:
     """生成随机请求头"""
-    browsers = ['chrome', 'edge']
-    browser = random.choice(browsers)
+    # 预定义的用户代理列表，避免依赖fake_useragent的网络请求
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    ]
 
-    if browser == 'chrome':
-        user_agent = UserAgent().chrome
-    else:
-        user_agent = UserAgent().edge
+    try:
+        # 尝试使用fake_useragent
+        browsers = ['chrome', 'edge']
+        browser = random.choice(browsers)
+
+        if browser == 'chrome':
+            user_agent = UserAgent().chrome
+        else:
+            user_agent = UserAgent().edge
+    except Exception:
+        # 如果fake_useragent失败，使用预定义的用户代理
+        user_agent = random.choice(user_agents)
 
     return {
         "User-Agent": user_agent,
