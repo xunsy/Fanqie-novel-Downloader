@@ -19,7 +19,7 @@ import traceback
 # 导入项目中的其他模块
 try:
     from config import CONFIG, save_user_config
-    from utils import center_window_over_parent, center_window_on_screen, resource_path, generate_epub, EBOOKLIB_AVAILABLE
+    from utils import center_window_over_parent, center_window_on_screen, generate_epub, EBOOKLIB_AVAILABLE
     from downloader import GUIdownloader
 except ImportError as e:
     print(f"导入错误: {e}")
@@ -63,41 +63,7 @@ class NovelDownloaderGUI(ctk.CTk):
         self.download_thread: Optional[threading.Thread] = None
         self.current_fq_downloader: Optional[GUIdownloader] = None
 
-        self.load_icons()
         self._setup_ui()
-
-    def load_icons(self):
-        """加载应用程序所需的图标文件"""
-        self.icons = {}
-        icon_size = (20, 20)
-        assets_path = resource_path("assets")
-        print(f"图标资源路径: {assets_path}")
-        
-        try:
-            from PIL import Image, ImageTk
-            icon_files = {
-                "settings": "settings.png",
-                "search": "search.png",
-                "folder": "folder.png",
-                "download": "download.png"
-            }
-
-            for name, file in icon_files.items():
-                icon_path = os.path.join(assets_path, file)
-                if os.path.exists(icon_path):
-                    try:
-                        img = Image.open(icon_path).resize(icon_size)
-                        setattr(self, f"_img_{name}", img)
-                        self.icons[name] = ctk.CTkImage(light_image=img, dark_image=img, size=icon_size)
-                        print(f"成功加载图标: {name}")
-                    except Exception as e:
-                        print(f"无法加载图标 {file}: {e}")
-                        self.icons[name] = None
-                else:
-                    print(f"图标文件未找到: {icon_path}")
-                    self.icons[name] = None
-        except ImportError as e:
-            print(f"警告: PIL (Pillow) 模块加载失败，无法加载图标。请运行 'pip install Pillow'。错误: {e}")
 
     def _setup_ui(self):
         """设置主窗口的用户界面布局和组件"""
@@ -167,7 +133,6 @@ class NovelDownloaderGUI(ctk.CTk):
         )
         self.novel_id.grid(row=1, column=1, padx=(0, 15), pady=15, sticky="ew")
 
-        search_icon = self.icons.get("search")
         self.search_button = ctk.CTkButton(
             main_frame,
             text="🔍 搜索",
@@ -179,13 +144,10 @@ class NovelDownloaderGUI(ctk.CTk):
             hover_color=self.colors["primary"],
             border_width=2,
             border_color=self.colors["accent"],
-            font=ctk.CTkFont(size=13, weight="bold"),
-            image=search_icon,
-            compound="left" if search_icon else "none"
+            font=ctk.CTkFont(size=13, weight="bold")
         )
         self.search_button.grid(row=1, column=2, padx=(0, 20), pady=15)
 
-        download_icon = self.icons.get("download")
         self.download_button = ctk.CTkButton(
             main_frame,
             text="⚡ 开始下载",
@@ -195,9 +157,7 @@ class NovelDownloaderGUI(ctk.CTk):
             corner_radius=10,
             fg_color=self.colors["accent"],
             hover_color=self.colors["success"],
-            font=ctk.CTkFont(size=14, weight="bold"),
-            image=download_icon,
-            compound="left" if download_icon else "none"
+            font=ctk.CTkFont(size=14, weight="bold")
         )
         self.download_button.grid(row=1, column=3, padx=(0, 20), pady=15)
 
@@ -234,7 +194,6 @@ class NovelDownloaderGUI(ctk.CTk):
             print(f"加载默认保存路径时出错: {e}，使用默认值 'downloads'")
             self.save_path.insert(0, "downloads")
 
-        folder_icon = self.icons.get("folder")
         browse_button = ctk.CTkButton(
             main_frame,
             text="📂 浏览",
@@ -246,9 +205,7 @@ class NovelDownloaderGUI(ctk.CTk):
             hover_color=self.colors["primary"],
             border_width=2,
             border_color=self.colors["accent"],
-            font=ctk.CTkFont(size=13, weight="bold"),
-            image=folder_icon,
-            compound="left" if folder_icon else "none"
+            font=ctk.CTkFont(size=13, weight="bold")
         )
         browse_button.grid(row=2, column=2, padx=(0, 20), pady=15)
 
@@ -436,7 +393,6 @@ class NovelDownloaderGUI(ctk.CTk):
         bottom_frame.grid_columnconfigure(1, weight=1)  # 中间空间拉伸
 
         # 设置按钮（左侧）
-        settings_icon = self.icons.get("settings")
         settings_button = ctk.CTkButton(
             bottom_frame,
             text="⚙️ 高级设置",
@@ -448,9 +404,7 @@ class NovelDownloaderGUI(ctk.CTk):
             hover_color=self.colors["primary"],
             border_width=2,
             border_color=self.colors["accent"],
-            font=ctk.CTkFont(size=14, weight="bold"),
-            image=settings_icon,
-            compound="left" if settings_icon else "none"
+            font=ctk.CTkFont(size=14, weight="bold")
         )
         settings_button.grid(row=0, column=0, padx=(0, 15), pady=10, sticky="w")
 
@@ -688,72 +642,248 @@ class NovelDownloaderGUI(ctk.CTk):
     def open_settings(self):
         """打开设置窗口"""
         settings_window = ctk.CTkToplevel(self)
-        settings_window.title("设置")
-        settings_window.minsize(450, 350)
+        settings_window.title("🔧 高级设置 - 番茄小说下载器 Pro")
+        settings_window.geometry("700x800")
+        settings_window.minsize(650, 750)
         settings_window.transient(self)
         settings_window.grab_set()
         center_window_over_parent(settings_window, self)
 
-        # 创建设置框架
-        frame = ctk.CTkFrame(settings_window)
-        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # 创建主滚动框架
+        main_frame = ctk.CTkScrollableFrame(
+            settings_window,
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors["accent"]
+        )
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # 1. 最大并发下载数
-        workers_label = ctk.CTkLabel(frame, text="最大并发下载数:", anchor="w")
-        workers_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        # 设置标题
+        title_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        title_frame.pack(fill="x", padx=20, pady=(20, 30))
+
+        title_label = ctk.CTkLabel(
+            title_frame,
+            text="⚙️ 系统配置中心",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        title_label.pack(side="left")
+
+        subtitle_label = ctk.CTkLabel(
+            title_frame,
+            text="🚀 优化您的下载体验",
+            font=ctk.CTkFont(size=14),
+            text_color=self.colors["text_secondary"]
+        )
+        subtitle_label.pack(side="right")
+
+        # 1. 性能设置区域
+        perf_frame = ctk.CTkFrame(
+            main_frame,
+            corner_radius=12,
+            border_width=2,
+            border_color=self.colors["secondary"]
+        )
+        perf_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        perf_title = ctk.CTkLabel(
+            perf_frame,
+            text="⚡ 性能优化设置",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        perf_title.pack(anchor="w", padx=20, pady=(20, 15))
+
+        # 最大并发下载数
+        workers_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
+        workers_frame.pack(fill="x", padx=20, pady=(0, 15))
+        workers_frame.grid_columnconfigure(1, weight=1)
+
+        workers_label = ctk.CTkLabel(
+            workers_frame,
+            text="🔄 最大并发下载数:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        workers_label.grid(row=0, column=0, padx=(0, 20), pady=5, sticky="w")
 
         workers_var = tk.IntVar(value=CONFIG["request"].get("max_workers", 3))
-        workers_slider = ctk.CTkSlider(frame, from_=1, to=10, number_of_steps=9, variable=workers_var)
-        workers_slider.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+        workers_slider = ctk.CTkSlider(
+            workers_frame,
+            from_=1,
+            to=10,
+            number_of_steps=9,
+            variable=workers_var,
+            progress_color=self.colors["accent"],
+            button_color=self.colors["success"],
+            button_hover_color=self.colors["primary"]
+        )
+        workers_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-        workers_value_label = ctk.CTkLabel(frame, textvariable=workers_var)
-        workers_value_label.grid(row=0, column=2, padx=10, pady=10)
+        workers_value_label = ctk.CTkLabel(
+            workers_frame,
+            textvariable=workers_var,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        workers_value_label.grid(row=0, column=2, padx=(20, 0), pady=5)
         workers_slider.configure(command=lambda v: workers_value_label.configure(text=str(int(v))))
 
-        # 2. 请求超时时间
-        timeout_label = ctk.CTkLabel(frame, text="请求超时时间 (秒):")
-        timeout_label.grid(row=1, column=0, padx=10, pady=10, sticky="w")
-        timeout_slider = ctk.CTkSlider(frame, from_=5, to=60, number_of_steps=11,
-                                       variable=ctk.IntVar(value=CONFIG.get("request", {}).get("timeout", 10)))
-        timeout_slider.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
-        timeout_value_label = ctk.CTkLabel(frame, text=str(timeout_slider.get()))
-        timeout_value_label.grid(row=1, column=2, padx=10, pady=10)
+        # 请求超时时间
+        timeout_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
+        timeout_frame.pack(fill="x", padx=20, pady=(0, 15))
+        timeout_frame.grid_columnconfigure(1, weight=1)
+
+        timeout_label = ctk.CTkLabel(
+            timeout_frame,
+            text="⏱️ 请求超时时间 (秒):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        timeout_label.grid(row=0, column=0, padx=(0, 20), pady=5, sticky="w")
+
+        timeout_slider = ctk.CTkSlider(
+            timeout_frame,
+            from_=5,
+            to=60,
+            number_of_steps=11,
+            variable=ctk.IntVar(value=CONFIG.get("request", {}).get("timeout", 10)),
+            progress_color=self.colors["accent"],
+            button_color=self.colors["success"],
+            button_hover_color=self.colors["primary"]
+        )
+        timeout_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        timeout_value_label = ctk.CTkLabel(
+            timeout_frame,
+            text=str(timeout_slider.get()),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        timeout_value_label.grid(row=0, column=2, padx=(20, 0), pady=5)
         timeout_slider.configure(command=lambda v: timeout_value_label.configure(text=str(int(v))))
 
-        # 3. 请求速率限制
-        rate_limit_label = ctk.CTkLabel(frame, text="请求速率限制 (次/秒):")
-        rate_limit_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
-        rate_limit_slider = ctk.CTkSlider(frame, from_=0.1, to=5.0, number_of_steps=49,
-                                          variable=ctk.DoubleVar(value=1/CONFIG.get("request", {}).get("request_rate_limit", 0.2) if CONFIG.get("request", {}).get("request_rate_limit", 0.2) > 0 else 5))
-        rate_limit_slider.grid(row=2, column=1, padx=10, pady=10, sticky="ew")
-        rate_limit_value_label = ctk.CTkLabel(frame, text=f"{rate_limit_slider.get():.1f}")
-        rate_limit_value_label.grid(row=2, column=2, padx=10, pady=10)
+        # 请求速率限制
+        rate_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
+        rate_frame.pack(fill="x", padx=20, pady=(0, 20))
+        rate_frame.grid_columnconfigure(1, weight=1)
+
+        rate_limit_label = ctk.CTkLabel(
+            rate_frame,
+            text="🚀 请求速率限制 (次/秒):",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        rate_limit_label.grid(row=0, column=0, padx=(0, 20), pady=5, sticky="w")
+
+        rate_limit_slider = ctk.CTkSlider(
+            rate_frame,
+            from_=0.1,
+            to=5.0,
+            number_of_steps=49,
+            variable=ctk.DoubleVar(value=1/CONFIG.get("request", {}).get("request_rate_limit", 0.2) if CONFIG.get("request", {}).get("request_rate_limit", 0.2) > 0 else 5),
+            progress_color=self.colors["accent"],
+            button_color=self.colors["success"],
+            button_hover_color=self.colors["primary"]
+        )
+        rate_limit_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        rate_limit_value_label = ctk.CTkLabel(
+            rate_frame,
+            text=f"{rate_limit_slider.get():.1f}",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        rate_limit_value_label.grid(row=0, column=2, padx=(20, 0), pady=5)
         rate_limit_slider.configure(command=lambda v: rate_limit_value_label.configure(text=f"{v:.1f}"))
 
-        # 4. 选择TXT时也生成EPUB
-        generate_epub_var = ctk.BooleanVar(value=CONFIG.get("output", {}).get("generate_epub_when_txt_selected", False))
-        generate_epub_check = ctk.CTkCheckBox(frame, text="选择 TXT 格式时，也自动生成 EPUB 文件",
-                                              variable=generate_epub_var)
-        generate_epub_check.grid(row=3, column=0, columnspan=3, padx=10, pady=10, sticky="w")
+        # 2. 输出设置区域
+        output_frame = ctk.CTkFrame(
+            main_frame,
+            corner_radius=12,
+            border_width=2,
+            border_color=self.colors["secondary"]
+        )
+        output_frame.pack(fill="x", padx=20, pady=(0, 20))
 
-        # 5. Tor网络设置
-        tor_frame = ctk.CTkFrame(frame)
-        tor_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
-        tor_frame.grid_columnconfigure(1, weight=1)
+        output_title = ctk.CTkLabel(
+            output_frame,
+            text="📄 输出格式设置",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        output_title.pack(anchor="w", padx=20, pady=(20, 15))
+
+        # EPUB自动生成选项
+        generate_epub_var = ctk.BooleanVar(value=CONFIG.get("output", {}).get("generate_epub_when_txt_selected", False))
+        generate_epub_check = ctk.CTkCheckBox(
+            output_frame,
+            text="📚 选择 TXT 格式时，也自动生成 EPUB 文件",
+            variable=generate_epub_var,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"],
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["primary"],
+            checkmark_color=self.colors["text"]
+        )
+        generate_epub_check.pack(anchor="w", padx=20, pady=(0, 20))
+
+        # 3. Tor网络设置区域
+        tor_frame = ctk.CTkFrame(
+            main_frame,
+            corner_radius=12,
+            border_width=2,
+            border_color=self.colors["secondary"]
+        )
+        tor_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        tor_title = ctk.CTkLabel(
+            tor_frame,
+            text="🔒 Tor 网络代理设置",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        tor_title.pack(anchor="w", padx=20, pady=(20, 15))
 
         # Tor启用开关
         tor_enabled_var = ctk.BooleanVar(value=CONFIG.get("tor", {}).get("enabled", False))
-        tor_enabled_check = ctk.CTkCheckBox(tor_frame, text="启用 Tor 网络代理",
-                                            variable=tor_enabled_var)
-        tor_enabled_check.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        tor_enabled_check = ctk.CTkCheckBox(
+            tor_frame,
+            text="🛡️ 启用 Tor 网络代理（增强隐私保护）",
+            variable=tor_enabled_var,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"],
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["primary"],
+            checkmark_color=self.colors["text"]
+        )
+        tor_enabled_check.pack(anchor="w", padx=20, pady=(0, 15))
 
         # Tor端口设置
-        tor_port_label = ctk.CTkLabel(tor_frame, text="Tor 代理端口:")
-        tor_port_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        tor_port_frame = ctk.CTkFrame(tor_frame, fg_color="transparent")
+        tor_port_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+        tor_port_label = ctk.CTkLabel(
+            tor_port_frame,
+            text="🔌 Tor 代理端口:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        tor_port_label.pack(side="left")
 
         tor_port_var = ctk.IntVar(value=CONFIG.get("tor", {}).get("proxy_port", 9050))
-        tor_port_entry = ctk.CTkEntry(tor_frame, textvariable=tor_port_var, width=100)
-        tor_port_entry.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+        tor_port_entry = ctk.CTkEntry(
+            tor_port_frame,
+            textvariable=tor_port_var,
+            width=120,
+            height=35,
+            corner_radius=8,
+            border_width=2,
+            border_color=self.colors["secondary"],
+            font=ctk.CTkFont(size=13)
+        )
+        tor_port_entry.pack(side="left", padx=(20, 0))
 
         # Tor连接测试按钮
         def test_tor_connection():
@@ -785,34 +915,88 @@ class NovelDownloaderGUI(ctk.CTk):
             finally:
                 test_button.configure(text="测试连接", state="normal")
 
-        test_button = ctk.CTkButton(tor_frame, text="测试连接", command=test_tor_connection, width=100)
-        test_button.grid(row=1, column=2, padx=10, pady=5)
+        test_button = ctk.CTkButton(
+            tor_port_frame,
+            text="🔍 测试连接",
+            command=test_tor_connection,
+            width=120,
+            height=35,
+            corner_radius=8,
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["success"],
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        test_button.pack(side="right", padx=(20, 0))
 
-        # 6. Cloudflare Workers反代设置
-        proxy_frame = ctk.CTkFrame(frame)
-        proxy_frame.grid(row=5, column=0, columnspan=3, padx=10, pady=10, sticky="ew")
-        proxy_frame.grid_columnconfigure(1, weight=1)
+        # 4. Cloudflare Workers反代设置区域
+        proxy_frame = ctk.CTkFrame(
+            main_frame,
+            corner_radius=12,
+            border_width=2,
+            border_color=self.colors["secondary"]
+        )
+        proxy_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        proxy_title = ctk.CTkLabel(
+            proxy_frame,
+            text="🌐 Cloudflare Workers 反代设置",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        proxy_title.pack(anchor="w", padx=20, pady=(20, 15))
 
         # 反代启用开关
         proxy_enabled_var = ctk.BooleanVar(value=CONFIG.get("cloudflare_proxy", {}).get("enabled", False))
-        proxy_enabled_check = ctk.CTkCheckBox(proxy_frame, text="启用 Cloudflare Workers 反代",
-                                              variable=proxy_enabled_var)
-        proxy_enabled_check.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        proxy_enabled_check = ctk.CTkCheckBox(
+            proxy_frame,
+            text="🚀 启用 Cloudflare Workers 反代（绕过网络限制）",
+            variable=proxy_enabled_var,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"],
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["primary"],
+            checkmark_color=self.colors["text"]
+        )
+        proxy_enabled_check.pack(anchor="w", padx=20, pady=(0, 15))
 
         # 反代域名设置
-        proxy_domain_label = ctk.CTkLabel(proxy_frame, text="反代域名:")
-        proxy_domain_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        proxy_domain_frame = ctk.CTkFrame(proxy_frame, fg_color="transparent")
+        proxy_domain_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+        proxy_domain_label = ctk.CTkLabel(
+            proxy_domain_frame,
+            text="🔗 反代域名:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"]
+        )
+        proxy_domain_label.pack(anchor="w", pady=(0, 8))
 
         proxy_domain_var = ctk.StringVar(value=CONFIG.get("cloudflare_proxy", {}).get("proxy_domain", ""))
-        proxy_domain_entry = ctk.CTkEntry(proxy_frame, textvariable=proxy_domain_var, width=300,
-                                          placeholder_text="例如: your-worker.your-subdomain.workers.dev")
-        proxy_domain_entry.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        proxy_domain_entry = ctk.CTkEntry(
+            proxy_domain_frame,
+            textvariable=proxy_domain_var,
+            height=40,
+            corner_radius=10,
+            border_width=2,
+            border_color=self.colors["secondary"],
+            font=ctk.CTkFont(size=13),
+            placeholder_text="🌐 例如: your-worker.your-subdomain.workers.dev"
+        )
+        proxy_domain_entry.pack(fill="x", pady=(0, 10))
 
         # 回退到原始URL选项
         fallback_var = ctk.BooleanVar(value=CONFIG.get("cloudflare_proxy", {}).get("fallback_to_original", True))
-        fallback_check = ctk.CTkCheckBox(proxy_frame, text="反代失败时回退到原始URL",
-                                         variable=fallback_var)
-        fallback_check.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        fallback_check = ctk.CTkCheckBox(
+            proxy_frame,
+            text="🔄 反代失败时自动回退到原始URL",
+            variable=fallback_var,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text"],
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["primary"],
+            checkmark_color=self.colors["text"]
+        )
+        fallback_check.pack(anchor="w", padx=20, pady=(0, 15))
 
         # 测试反代连接按钮
         def test_cloudflare_proxy():
@@ -851,12 +1035,35 @@ class NovelDownloaderGUI(ctk.CTk):
             finally:
                 proxy_test_button.configure(text="测试连接", state="normal")
 
-        proxy_test_button = ctk.CTkButton(proxy_frame, text="测试连接", command=test_cloudflare_proxy, width=100)
-        proxy_test_button.grid(row=1, column=2, padx=10, pady=5)
+        proxy_test_button = ctk.CTkButton(
+            proxy_domain_frame,
+            text="🔍 测试反代连接",
+            command=test_cloudflare_proxy,
+            width=150,
+            height=40,
+            corner_radius=10,
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["success"],
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        proxy_test_button.pack(anchor="e", pady=(0, 5))
 
-        # 保存和取消按钮
-        button_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        button_frame.grid(row=6, column=0, columnspan=3, pady=20)
+        # 保存和取消按钮区域
+        button_frame = ctk.CTkFrame(
+            main_frame,
+            corner_radius=12,
+            border_width=2,
+            border_color=self.colors["accent"]
+        )
+        button_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        button_title = ctk.CTkLabel(
+            button_frame,
+            text="💾 保存配置",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        button_title.pack(pady=(20, 15))
 
         # 将控件打包传递给保存函数
         controls_to_save = {
@@ -877,11 +1084,35 @@ class NovelDownloaderGUI(ctk.CTk):
         from functools import partial
         save_command = partial(self._save_settings_wrapper, settings_window, controls_to_save)
 
-        save_button = ctk.CTkButton(button_frame, text="保存设置", command=save_command)
-        save_button.pack(side="left", padx=10)
+        # 按钮容器
+        buttons_container = ctk.CTkFrame(button_frame, fg_color="transparent")
+        buttons_container.pack(pady=(0, 20))
 
-        cancel_button = ctk.CTkButton(button_frame, text="取消", command=settings_window.destroy)
-        cancel_button.pack(side="left", padx=10)
+        save_button = ctk.CTkButton(
+            buttons_container,
+            text="✅ 保存设置",
+            command=save_command,
+            width=150,
+            height=45,
+            corner_radius=12,
+            fg_color=self.colors["success"],
+            hover_color="#00cc77",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        save_button.pack(side="left", padx=15)
+
+        cancel_button = ctk.CTkButton(
+            buttons_container,
+            text="❌ 取消",
+            command=settings_window.destroy,
+            width=150,
+            height=45,
+            corner_radius=12,
+            fg_color=self.colors["error"],
+            hover_color="#cc3a47",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        cancel_button.pack(side="left", padx=15)
 
     def _save_settings_wrapper(self, settings_window, controls):
         """保存设置的包装函数"""
