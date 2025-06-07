@@ -1,3 +1,5 @@
+# 当前项目部分源代码来源：https://github.com/Dlmily/Tomato-Novel-Downloader-Lite
+
 # 番茄小说下载器 v1.7
 
 一个功能强大的番茄小说下载工具，支持现代化GUI界面和命令行操作。
