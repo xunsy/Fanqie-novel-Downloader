@@ -78,32 +78,26 @@ jobs:
         # 获取提交信息
         $commits = git log --oneline -20 --pretty=format:"- %s"
         $releaseTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $body = @"
-## 番茄小说下载器 $version
 
-### 发布时间
-$releaseTime
+        # 创建发布说明
+        $body = "## 番茄小说下载器 $version`n`n"
+        $body += "### 发布时间`n"
+        $body += "$releaseTime`n`n"
+        $body += "### 更新内容`n"
+        $body += "$commits`n`n"
+        $body += "### 使用说明`n`n"
+        $body += "#### 版本说明：`n"
+        $body += "- **番茄小说下载器_调试版.exe** - 带控制台窗口版本，便于查看运行信息和调试`n`n"
+        $body += "#### 使用方法：`n"
+        $body += "1. 下载exe文件`n"
+        $body += "2. 双击运行即可使用`n"
+        $body += "3. 支持 Windows 10+ 系统`n"
+        $body += "4. 控制台窗口会显示详细的运行信息`n`n"
+        $body += "### 注意事项`n"
+        $body += "- 首次运行可能被杀毒软件拦截，请添加信任`n"
+        $body += "- 控制台窗口会显示详细的下载进度和错误信息`n"
+        $body += "- 如有问题请在 Issues 中反馈`n"
 
-### 更新内容
-$commits
-
-### 使用说明
-
-#### 版本说明：
-- **番茄小说下载器_调试版.exe** - 带控制台窗口版本，便于查看运行信息和调试
-
-#### 使用方法：
-1. 下载exe文件
-2. 双击运行即可使用
-3. 支持 Windows 10+ 系统
-4. 控制台窗口会显示详细的运行信息
-
-### 注意事项
-- 首次运行可能被杀毒软件拦截，请添加信任
-- 控制台窗口会显示详细的下载进度和错误信息
-- 如有问题请在 Issues 中反馈
-"@
-        
         $body | Out-File -FilePath "release_notes.md" -Encoding UTF8
     
     - name: 创建Release
