@@ -761,13 +761,95 @@ class GUIdownloader:
                     f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
 
             success_count = 0
+            failed_chapters = []
+            chapter_results = {}
+            import threading
+            lock = threading.Lock()
 
+            # 批量下载模式
+            if (len(todo_chapters) > 100 and
+                CONFIG["batch_config"]["enabled"] and
+                any(ep["name"] == "qyuing" for ep in CONFIG["api_endpoints"])):
+
+                if self.status_callback:
+                    self.status_callback("检测到大量章节，启用批量下载模式...")
+
+                batch_size = CONFIG["batch_config"]["max_batch_size"]
+                total_batches = (len(todo_chapters) + batch_size - 1) // batch_size
+
+                for batch_idx in range(0, len(todo_chapters), batch_size):
+                    if self.stop_flag:
+                        break
+
+                    batch = todo_chapters[batch_idx:batch_idx + batch_size]
+                    current_batch = batch_idx // batch_size + 1
+
+                    if self.status_callback:
+                        self.status_callback(f"批量下载第 {current_batch}/{total_batches} 批 ({len(batch)} 章节)")
+
+                    item_ids = [chap["id"] for chap in batch]
+                    batch_results = batch_download_chapters(item_ids, headers)
+
+                    if not batch_results:
+                        if self.status_callback:
+                            self.status_callback(f"第 {current_batch} 批下载失败，将使用单章模式重试")
+                        failed_chapters.extend(batch)
+                        continue
+
+                    # 处理批量下载结果
+                    for chap in batch:
+                        if self.stop_flag:
+                            break
+
+                        content = batch_results.get(chap["id"], "")
+                        if isinstance(content, dict):
+                            content = content.get("content", "")
+
+                        if content:
+                            processed = process_chapter_content(content)
+                            with lock:
+                                chapter_results[chap["index"]] = {
+                                    "base_title": chap["title"],
+                                    "api_title": "",
+                                    "content": processed
+                                }
+                                downloaded.add(chap["id"])
+                                success_count += 1
+                        else:
+                            with lock:
+                                failed_chapters.append(chap)
+
+                    # 更新进度
+                    current_downloaded = already_downloaded + success_count
+                    progress = int(current_downloaded / total_chapters * 100)
+                    if self.progress_callback:
+                        self.progress_callback(progress)
+
+                # 写入批量下载的结果
+                if chapter_results:
+                    with open(output_file_path, 'w', encoding='utf-8') as f:
+                        f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
+                        for idx in range(len(chapters)):
+                            if idx in chapter_results:
+                                result = chapter_results[idx]
+                                title = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
+                                f.write(f"{title}\n{result['content']}\n\n")
+
+                save_status(self.save_path, downloaded)
+                todo_chapters = failed_chapters.copy()
+                failed_chapters = []
+
+                if self.status_callback and todo_chapters:
+                    self.status_callback(f"批量下载完成，剩余 {len(todo_chapters)} 章节将使用单章模式下载")
+
+            # 单章下载模式（处理批量下载失败的章节或小于100章的情况）
             for i, chapter in enumerate(todo_chapters):
                 if self.stop_flag:
                     break
 
                 if self.status_callback:
-                    self.status_callback(f"正在下载: {chapter['title']} ({already_downloaded + i + 1}/{total_chapters})")
+                    current_pos = already_downloaded + success_count + i + 1
+                    self.status_callback(f"正在下载: {chapter['title']} ({current_pos}/{total_chapters})")
 
                 title, content = down_text(chapter["id"], headers, self.book_id)
                 if content:
@@ -780,7 +862,7 @@ class GUIdownloader:
                     success_count += 1
 
                 # 更新进度（基于总章节数）
-                current_downloaded = already_downloaded + i + 1
+                current_downloaded = already_downloaded + success_count
                 progress = int(current_downloaded / total_chapters * 100)
                 if self.progress_callback:
                     self.progress_callback(progress)
