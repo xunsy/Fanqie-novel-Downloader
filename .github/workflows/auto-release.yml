@@ -42,14 +42,13 @@ jobs:
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $env:PYTHONIOENCODING = "utf-8"
 
-        # 检查spec文件是否存在
-        if (Test-Path "build_exe.spec") {
-          echo "使用现有的spec文件编译..."
-          pyinstaller build_exe.spec --clean
-        } else {
-          echo "使用默认配置编译..."
-          pyinstaller --onefile --windowed --name "番茄小说下载器" main.py
-        }
+        # 编译调试版本（带控制台窗口）
+        echo "编译调试版本（带控制台窗口）..."
+        pyinstaller build_console.spec --clean
+
+        # 编译发布版本（无控制台窗口）
+        echo "编译发布版本（无控制台窗口）..."
+        pyinstaller build_windowed.spec --clean
     
     - name: 生成版本号和发布信息
       id: release_info
@@ -70,13 +69,19 @@ jobs:
         $commits
         
         ### 💾 下载说明
-        - 下载 ``番茄小说下载器.exe`` 文件
+
+        #### 📦 两个版本可选：
+        - **番茄小说下载器.exe** - 发布版本（无控制台窗口，推荐日常使用）
+        - **番茄小说下载器_调试版.exe** - 调试版本（带控制台窗口，便于查看运行信息）
+
+        #### 🚀 使用方法：
+        - 下载对应版本的exe文件
         - 双击运行即可使用，无需安装Python环境
         - 支持Windows 10及以上系统
-        
+
         ### ⚠️ 注意事项
         - 首次运行可能被杀毒软件误报，请添加信任
-        - 建议在下载前关闭杀毒软件的实时保护
+        - 如遇问题建议先使用调试版本查看错误信息
         - 如有问题请在Issues中反馈
         "@
         
@@ -86,12 +91,21 @@ jobs:
     
     - name: 检查文件是否存在
       run: |
-        if (Test-Path "dist/番茄小说下载器.exe") {
-          echo "✅ exe文件编译成功"
-          $size = (Get-Item "dist/番茄小说下载器.exe").Length / 1MB
-          echo "📦 文件大小: $([math]::Round($size, 2)) MB"
-        } else {
-          echo "❌ exe文件编译失败"
+        $files = @("dist/番茄小说下载器.exe", "dist/番茄小说下载器_调试版.exe")
+        $allExist = $true
+
+        foreach ($file in $files) {
+          if (Test-Path $file) {
+            $size = (Get-Item $file).Length / 1MB
+            $fileName = Split-Path $file -Leaf
+            echo "✅ $fileName 编译成功 - 大小: $([math]::Round($size, 2)) MB"
+          } else {
+            echo "❌ $file 编译失败"
+            $allExist = $false
+          }
+        }
+
+        if (-not $allExist) {
           exit 1
         }
     
@@ -101,7 +115,9 @@ jobs:
         tag_name: ${{ steps.release_info.outputs.version }}
         name: 番茄小说下载器 ${{ steps.release_info.outputs.version }}
         body_path: ${{ steps.release_info.outputs.release_body_file }}
-        files: dist/番茄小说下载器.exe
+        files: |
+          dist/番茄小说下载器.exe
+          dist/番茄小说下载器_调试版.exe
         draft: false
         prerelease: false
       env:

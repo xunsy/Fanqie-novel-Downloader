@@ -110,7 +110,10 @@ exe = EXE(
     - name: 编译exe
       shell: pwsh
       run: |
-        pyinstaller auto_build.spec --clean --noconfirm
+        # 编译调试版本
+        pyinstaller build_console.spec --clean --noconfirm
+        # 编译发布版本
+        pyinstaller build_windowed.spec --clean --noconfirm
     
     - name: 生成版本信息
       id: version
@@ -131,13 +134,20 @@ $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 $commits
 
 ### 💾 使用说明
-1. 下载 FanqieDownloader.exe 文件
+
+#### 📦 两个版本可选：
+- **番茄小说下载器.exe** - 发布版本（无控制台窗口）
+- **番茄小说下载器_调试版.exe** - 调试版本（带控制台窗口）
+
+#### 🚀 使用方法：
+1. 下载对应版本的exe文件
 2. 双击运行即可使用
 3. 支持 Windows 10+ 系统
 
 ### ⚠️ 注意事项
 - 首次运行可能被杀毒软件拦截，请添加信任
-- 如遇问题请在 Issues 中反馈
+- 如遇问题建议先使用调试版本查看错误信息
+- 如有问题请在 Issues 中反馈
 "@
         
         $body | Out-File -FilePath "release_notes.md" -Encoding UTF8
@@ -148,7 +158,9 @@ $commits
         tag_name: ${{ steps.version.outputs.tag }}
         name: 番茄小说下载器 ${{ steps.version.outputs.tag }}
         body_path: release_notes.md
-        files: dist/FanqieDownloader.exe
+        files: |
+          dist/番茄小说下载器.exe
+          dist/番茄小说下载器_调试版.exe
         draft: false
         prerelease: false
       env:
