@@ -45,10 +45,6 @@ jobs:
         # 编译调试版本（带控制台窗口）
         echo "编译调试版本（带控制台窗口）..."
         pyinstaller build_console.spec --clean
-
-        # 编译发布版本（无控制台窗口）
-        echo "编译发布版本（无控制台窗口）..."
-        pyinstaller build_windowed.spec --clean
     
     - name: 生成版本号和发布信息
       id: release_info
@@ -70,18 +66,18 @@ jobs:
         
         ### 💾 下载说明
 
-        #### 📦 两个版本可选：
-        - **番茄小说下载器.exe** - 发布版本（无控制台窗口，推荐日常使用）
-        - **番茄小说下载器_调试版.exe** - 调试版本（带控制台窗口，便于查看运行信息）
+        #### 📦 版本说明：
+        - **番茄小说下载器_调试版.exe** - 带控制台窗口版本，便于查看运行信息和调试
 
         #### 🚀 使用方法：
-        - 下载对应版本的exe文件
+        - 下载exe文件
         - 双击运行即可使用，无需安装Python环境
         - 支持Windows 10及以上系统
+        - 控制台窗口会显示详细的运行信息
 
         ### ⚠️ 注意事项
         - 首次运行可能被杀毒软件误报，请添加信任
-        - 如遇问题建议先使用调试版本查看错误信息
+        - 控制台窗口会显示详细的下载进度和错误信息
         - 如有问题请在Issues中反馈
         "@
         
@@ -91,21 +87,14 @@ jobs:
     
     - name: 检查文件是否存在
       run: |
-        $files = @("dist/番茄小说下载器.exe", "dist/番茄小说下载器_调试版.exe")
-        $allExist = $true
+        $file = "dist/番茄小说下载器_调试版.exe"
 
-        foreach ($file in $files) {
-          if (Test-Path $file) {
-            $size = (Get-Item $file).Length / 1MB
-            $fileName = Split-Path $file -Leaf
-            echo "✅ $fileName 编译成功 - 大小: $([math]::Round($size, 2)) MB"
-          } else {
-            echo "❌ $file 编译失败"
-            $allExist = $false
-          }
-        }
-
-        if (-not $allExist) {
+        if (Test-Path $file) {
+          $size = (Get-Item $file).Length / 1MB
+          $fileName = Split-Path $file -Leaf
+          echo "✅ $fileName 编译成功 - 大小: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ $file 编译失败"
           exit 1
         }
     
@@ -116,7 +105,6 @@ jobs:
         name: 番茄小说下载器 ${{ steps.release_info.outputs.version }}
         body_path: ${{ steps.release_info.outputs.release_body_file }}
         files: |
-          dist/番茄小说下载器.exe
           dist/番茄小说下载器_调试版.exe
         draft: false
         prerelease: false
