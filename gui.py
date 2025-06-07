@@ -25,7 +25,8 @@ except ImportError as e:
     print(f"导入错误: {e}")
     sys.exit(1)
 
-# 设置 CustomTkinter 外观
+# 设置 CustomTkinter 外观 - 强制深色模式
+ctk.set_appearance_mode("dark")  # 强制深色模式，不受系统主题影响
 ctk.set_default_color_theme(CONFIG.get("appearance", {}).get("color_theme", "blue"))
 
 class NovelDownloaderGUI(ctk.CTk):
@@ -35,6 +36,9 @@ class NovelDownloaderGUI(ctk.CTk):
         """初始化主窗口和应用程序状态"""
         super().__init__()
 
+        # 强制设置深色主题，确保不受系统主题影响
+        ctk.set_appearance_mode("dark")
+
         # 基本窗口设置
         self.version = "1.7"
         self.title(f"🍅 番茄小说下载器 Pro v{self.version} - 智能下载引擎")
@@ -42,6 +46,9 @@ class NovelDownloaderGUI(ctk.CTk):
         # 设置现代化窗口大小
         self.geometry("1000x750")
         self.minsize(900, 650)
+
+        # 设置主窗口背景色为深色
+        self.configure(fg_color="#0a0e27")
 
         # 自定义颜色主题
         self.colors = {
@@ -82,7 +89,8 @@ class NovelDownloaderGUI(ctk.CTk):
             self,
             corner_radius=15,
             border_width=2,
-            border_color=self.colors["accent"]
+            border_color=self.colors["accent"],
+            fg_color=self.colors["surface"]  # 强制深色背景
         )
         main_frame.grid(row=0, column=0, padx=25, pady=25, sticky="ew")
 
@@ -129,7 +137,9 @@ class NovelDownloaderGUI(ctk.CTk):
             corner_radius=10,
             border_width=2,
             border_color=self.colors["secondary"],
-            font=ctk.CTkFont(size=13)
+            font=ctk.CTkFont(size=13),
+            fg_color=self.colors["background"],  # 深色输入框背景
+            text_color=self.colors["text"]  # 白色文字
         )
         self.novel_id.grid(row=1, column=1, padx=(0, 15), pady=15, sticky="ew")
 
@@ -179,7 +189,9 @@ class NovelDownloaderGUI(ctk.CTk):
             corner_radius=10,
             border_width=2,
             border_color=self.colors["secondary"],
-            font=ctk.CTkFont(size=13)
+            font=ctk.CTkFont(size=13),
+            fg_color=self.colors["background"],  # 深色输入框背景
+            text_color=self.colors["text"]  # 白色文字
         )
         self.save_path.grid(row=2, column=1, padx=(0, 15), pady=15, sticky="ew")
 
@@ -264,7 +276,8 @@ class NovelDownloaderGUI(ctk.CTk):
             self,
             corner_radius=15,
             border_width=2,
-            border_color=self.colors["secondary"]
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["surface"]  # 强制深色背景
         )
         progress_frame.grid(row=1, column=0, padx=25, pady=(0, 25), sticky="ew")
         progress_frame.grid_columnconfigure(0, weight=1)
@@ -344,7 +357,8 @@ class NovelDownloaderGUI(ctk.CTk):
             self,
             corner_radius=15,
             border_width=2,
-            border_color=self.colors["secondary"]
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["surface"]  # 强制深色背景
         )
         log_frame.grid(row=2, column=0, padx=25, pady=(0, 25), sticky="nsew")
         log_frame.grid_columnconfigure(0, weight=1)
@@ -381,7 +395,9 @@ class NovelDownloaderGUI(ctk.CTk):
             font=ctk.CTkFont(size=12),
             corner_radius=10,
             border_width=2,
-            border_color=self.colors["surface"]
+            border_color=self.colors["surface"],
+            fg_color=self.colors["background"],  # 深色文本框背景
+            text_color=self.colors["text"]  # 白色文字
         )
         self.log_text.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         self.log_text.configure(state="disabled")
@@ -647,6 +663,8 @@ class NovelDownloaderGUI(ctk.CTk):
         settings_window.minsize(650, 750)
         settings_window.transient(self)
         settings_window.grab_set()
+        # 强制设置窗口为深色背景
+        settings_window.configure(fg_color=self.colors["background"])
         center_window_over_parent(settings_window, self)
 
         # 创建主滚动框架
@@ -654,7 +672,8 @@ class NovelDownloaderGUI(ctk.CTk):
             settings_window,
             corner_radius=15,
             border_width=2,
-            border_color=self.colors["accent"]
+            border_color=self.colors["accent"],
+            fg_color=self.colors["surface"]  # 强制深色背景
         )
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
@@ -683,7 +702,8 @@ class NovelDownloaderGUI(ctk.CTk):
             main_frame,
             corner_radius=12,
             border_width=2,
-            border_color=self.colors["secondary"]
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["background"]  # 强制深色背景
         )
         perf_frame.pack(fill="x", padx=20, pady=(0, 20))
 
@@ -803,7 +823,8 @@ class NovelDownloaderGUI(ctk.CTk):
             main_frame,
             corner_radius=12,
             border_width=2,
-            border_color=self.colors["secondary"]
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["background"]  # 强制深色背景
         )
         output_frame.pack(fill="x", padx=20, pady=(0, 20))
 
@@ -834,7 +855,8 @@ class NovelDownloaderGUI(ctk.CTk):
             main_frame,
             corner_radius=12,
             border_width=2,
-            border_color=self.colors["secondary"]
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["background"]  # 强制深色背景
         )
         tor_frame.pack(fill="x", padx=20, pady=(0, 20))
 
@@ -881,7 +903,9 @@ class NovelDownloaderGUI(ctk.CTk):
             corner_radius=8,
             border_width=2,
             border_color=self.colors["secondary"],
-            font=ctk.CTkFont(size=13)
+            font=ctk.CTkFont(size=13),
+            fg_color=self.colors["surface"],  # 深色输入框背景
+            text_color=self.colors["text"]  # 白色文字
         )
         tor_port_entry.pack(side="left", padx=(20, 0))
 
@@ -933,7 +957,8 @@ class NovelDownloaderGUI(ctk.CTk):
             main_frame,
             corner_radius=12,
             border_width=2,
-            border_color=self.colors["secondary"]
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["background"]  # 强制深色背景
         )
         proxy_frame.pack(fill="x", padx=20, pady=(0, 20))
 
@@ -980,7 +1005,9 @@ class NovelDownloaderGUI(ctk.CTk):
             border_width=2,
             border_color=self.colors["secondary"],
             font=ctk.CTkFont(size=13),
-            placeholder_text="🌐 例如: your-worker.your-subdomain.workers.dev"
+            placeholder_text="🌐 例如: your-worker.your-subdomain.workers.dev",
+            fg_color=self.colors["surface"],  # 深色输入框背景
+            text_color=self.colors["text"]  # 白色文字
         )
         proxy_domain_entry.pack(fill="x", pady=(0, 10))
 
@@ -1053,7 +1080,8 @@ class NovelDownloaderGUI(ctk.CTk):
             main_frame,
             corner_radius=12,
             border_width=2,
-            border_color=self.colors["accent"]
+            border_color=self.colors["accent"],
+            fg_color=self.colors["background"]  # 强制深色背景
         )
         button_frame.pack(fill="x", padx=20, pady=(0, 20))
 

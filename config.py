@@ -77,9 +77,9 @@ FILE_CONFIG: Dict[str, str] = {
     "default_save_path": "downloads"
 }
 
-# UI 主题配置
+# UI 主题配置 - 强制深色模式
 APPEARANCE_CONFIG: Dict[str, str] = {
-    "appearance_mode": "dark",
+    "appearance_mode": "dark",  # 强制深色模式，不受系统主题影响
     "color_theme": "blue"
 }
 
