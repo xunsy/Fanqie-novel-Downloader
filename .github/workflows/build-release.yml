@@ -79,14 +79,17 @@ jobs:
         git log --oneline -20 --pretty=format:"- %s" > commits.txt
 
         # 创建发布说明文件
-        $releaseNotes = @"
+        $currentTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $commitContent = Get-Content commits.txt -Raw
+
+        $releaseContent = @"
 ## Fanqie Novel Downloader $version
 
 ### Release Time
-$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+$currentTime
 
 ### Updates
-$(Get-Content commits.txt -Raw)
+$commitContent
 
 ### Usage Instructions
 
@@ -104,7 +107,8 @@ $(Get-Content commits.txt -Raw)
 - Console window displays detailed download progress and error information
 - Please report issues in the Issues section
 "@
-        $releaseNotes | Out-File -FilePath "release_notes.md" -Encoding UTF8
+
+        $releaseContent | Out-File -FilePath "release_notes.md" -Encoding UTF8
     
     - name: 创建Release
       uses: softprops/action-gh-release@v1
