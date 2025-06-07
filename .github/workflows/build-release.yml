@@ -79,7 +79,7 @@ jobs:
         git log --oneline -20 --pretty=format:"- %s" > commits.txt
 
         # 创建发布说明文件
-        @"
+        $releaseNotes = @"
 ## Fanqie Novel Downloader $version
 
 ### Release Time
@@ -103,7 +103,8 @@ $(Get-Content commits.txt -Raw)
 - First run may be blocked by antivirus software, please add to trust list
 - Console window displays detailed download progress and error information
 - Please report issues in the Issues section
-"@ | Out-File -FilePath "release_notes.md" -Encoding UTF8
+"@
+        $releaseNotes | Out-File -FilePath "release_notes.md" -Encoding UTF8
     
     - name: 创建Release
       uses: softprops/action-gh-release@v1
