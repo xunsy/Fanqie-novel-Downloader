@@ -78,7 +78,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='番茄小说下载器_调试版',
+    name='FanqieDownloader_Debug',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -80,14 +80,14 @@ jobs:
         $releaseTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
         # 创建发布说明
-        $body = "## 番茄小说下载器 $version`n`n"
+        $body = "## Fanqie Novel Downloader $version`n`n"
         $body += "### 发布时间`n"
         $body += "$releaseTime`n`n"
         $body += "### 更新内容`n"
         $body += "$commits`n`n"
         $body += "### 使用说明`n`n"
         $body += "#### 版本说明：`n"
-        $body += "- **番茄小说下载器_调试版.exe** - 带控制台窗口版本，便于查看运行信息和调试`n`n"
+        $body += "- **FanqieDownloader_Debug.exe** - 带控制台窗口版本，便于查看运行信息和调试`n`n"
         $body += "#### 使用方法：`n"
         $body += "1. 下载exe文件`n"
         $body += "2. 双击运行即可使用`n"
@@ -104,10 +104,10 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.version.outputs.tag }}
-        name: 番茄小说下载器 ${{ steps.version.outputs.tag }}
+        name: Fanqie Novel Downloader ${{ steps.version.outputs.tag }}
         body_path: release_notes.md
         files: |
-          dist/番茄小说下载器_调试版.exe
+          dist/FanqieDownloader_Debug.exe
         draft: false
         prerelease: false
       env:
