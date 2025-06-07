@@ -24,7 +24,7 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
+# *.spec  # 注释掉，我们需要保留自定义的spec文件
 
 # Installer logs
 pip-log.txt
