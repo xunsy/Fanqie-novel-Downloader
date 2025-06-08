@@ -13,21 +13,51 @@ jobs:
     strategy:
       matrix:
         include:
+          # Windows 平台
           - os: windows-latest
             platform: windows
             arch: x64
+            python-arch: x64
             executable_ext: .exe
+          - os: windows-latest
+            platform: windows
+            arch: x86
+            python-arch: x86
+            executable_ext: .exe
+          # Windows ARM64 需要特殊处理，PyInstaller 支持有限
+          
+          # Linux 平台
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            python-arch: x64
             executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86
+            python-arch: x64  # 使用x64构建32位
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            python-arch: x64
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: armv7
+            python-arch: x64
+            executable_ext: ""
+            
+          # macOS 平台
           - os: macos-latest
             platform: macos
             arch: x64
+            python-arch: x64
             executable_ext: ""
           - os: macos-14  # Apple Silicon
             platform: macos
             arch: arm64
+            python-arch: arm64
             executable_ext: ""
     
     runs-on: ${{ matrix.os }}
@@ -42,6 +72,20 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
+        architecture: ${{ matrix.python-arch }}
+        
+    - name: 安装QEMU (Linux ARM构建)
+      if: matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7')
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-user-static binfmt-support
+        
+    - name: 安装构建工具 (Linux 32位)
+      if: matrix.platform == 'linux' && matrix.arch == 'x86'
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y gcc-multilib g++-multilib
         
     - name: 安装依赖 (Windows)
       if: matrix.platform == 'windows'
@@ -107,7 +151,30 @@ jobs:
     - name: 编译可执行文件
       shell: bash
       run: |
-        pyinstaller build_console.spec --clean --noconfirm
+        # 为不同架构设置编译选项
+        EXTRA_ARGS=""
+        
+        # Linux ARM 交叉编译
+        if [[ "${{ matrix.platform }}" == "linux" ]]; then
+          case "${{ matrix.arch }}" in
+            arm64)
+              export PYINSTALLER_COMPILE_BOOTLOADER=1
+              export CC=aarch64-linux-gnu-gcc
+              export CXX=aarch64-linux-gnu-g++
+              ;;
+            armv7)
+              export PYINSTALLER_COMPILE_BOOTLOADER=1
+              export CC=arm-linux-gnueabihf-gcc
+              export CXX=arm-linux-gnueabihf-g++
+              ;;
+            x86)
+              export CFLAGS="-m32"
+              export LDFLAGS="-m32"
+              ;;
+          esac
+        fi
+        
+        pyinstaller build_console.spec --clean --noconfirm $EXTRA_ARGS
         
     - name: 重命名可执行文件
       shell: bash
@@ -172,53 +239,105 @@ jobs:
         TZ: 'Asia/Shanghai'
       run: |
         version="${{ steps.version.outputs.tag }}"
-        current_time=$(date +'%Y-%m-%d %H:%M:%S CST')
+        
+        # 获取各国时间
+        china_time=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S CST')
+        us_eastern_time=$(TZ='America/New_York' date +'%Y-%m-%d %H:%M:%S EST')
+        us_pacific_time=$(TZ='America/Los_Angeles' date +'%Y-%m-%d %H:%M:%S PST')
+        uk_time=$(TZ='Europe/London' date +'%Y-%m-%d %H:%M:%S GMT')
+        france_time=$(TZ='Europe/Paris' date +'%Y-%m-%d %H:%M:%S CET')
+        russia_time=$(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S MSK')
+        
         commit_content=$(cat commits.txt)
         
         cat > release_notes.md << EOF
         ## Fanqie Novel Downloader $version
         
-        ### 发布时间 / Release Time
-        $current_time (中国标准时间)
+        ### 🌍 发布时间 / Release Time
         
-        ### 更新内容 / Updates
+        **多国时间 / Countries Time:**
+        - 🇨🇳 **中国 (北京)**: $china_time
+        - 🇺🇸 **美国 (纽约)**: $us_eastern_time
+        - 🇺🇸 **美国 (洛杉矶)**: $us_pacific_time
+        - 🇬🇧 **英国 (伦敦)**: $uk_time
+        - 🇫🇷 **法国 (巴黎)**: $france_time
+        - 🇷🇺 **俄罗斯 (莫斯科)**: $russia_time
+        
+        ### 📝 更新内容 / Updates
         $commit_content
         
-        ### 平台支持 / Platform Support
-        此版本支持以下平台：
+        ### 💻 平台支持 / Platform Support
+        
+        此版本支持以下平台和架构：
         
         #### Windows
-        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10+ (64位)
+        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10/11 (64位) ✅
+        - **FanqieDownloader_Debug_windows_x86.exe** - Windows 7+ (32位) ✅
         
         #### Linux
-        - **FanqieDownloader_Debug_linux_x64** - Linux (64位)
+        - **FanqieDownloader_Debug_linux_x64** - Linux (64位 AMD/Intel) ✅
+        - **FanqieDownloader_Debug_linux_x86** - Linux (32位) ✅
+        - **FanqieDownloader_Debug_linux_arm64** - Linux ARM64 (树莓派4/5, ARM服务器) 🆕
+        - **FanqieDownloader_Debug_linux_armv7** - Linux ARMv7 (树莓派2/3, 32位ARM设备) 🆕
         
         #### macOS
-        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64位)
-        - **FanqieDownloader_Debug_macos_arm64** - macOS Apple Silicon (M1/M2)
+        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64位) ✅
+        - **FanqieDownloader_Debug_macos_arm64** - macOS Apple Silicon (M1/M2/M3) ✅
         
-        ### 使用说明 / Usage Instructions
+        ### 📖 使用说明 / Usage Instructions
         
         #### Windows 用户：
-        1. 下载 .exe 文件
+        1. 根据系统位数下载对应的 .exe 文件
         2. 双击运行
-        3. 首次运行可能被杀毒软件拦截，请添加信任
+        3. 如果不确定系统位数，建议下载 x86 版本（兼容性更好）
+        4. 首次运行可能被杀毒软件拦截，请添加信任
         
         #### Linux 用户：
-        1. 下载对应的二进制文件
-        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_linux_x64\`
-        3. 运行：\`./FanqieDownloader_Debug_linux_x64\`
+        1. 下载对应架构的二进制文件
+        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_linux_*\`
+        3. 运行：\`./FanqieDownloader_Debug_linux_*\`
+        4. 查看系统架构：\`uname -m\` (x86_64=x64, i686=x86, aarch64=arm64, armv7l=armv7)
         
         #### macOS 用户：
-        1. 下载对应版本（Intel Mac 选择 x64，Apple Silicon 选择 arm64）
+        1. Intel Mac 选择 x64 版本，Apple Silicon (M系列) 选择 arm64 版本
         2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_macos_*\`
         3. 运行：\`./FanqieDownloader_Debug_macos_*\`
         4. 如被系统阻止，请在系统偏好设置 > 安全性与隐私中允许运行
+        5. 或使用命令：\`xattr -cr FanqieDownloader_Debug_macos_*\` 清除隔离属性
         
-        ### 注意事项 / Notes
+        #### 树莓派用户：
+        - 树莓派 2/3 (32位系统): 使用 armv7 版本
+        - 树莓派 4/5 (64位系统): 使用 arm64 版本
+        - 查看架构：\`dpkg --print-architecture\`
+        
+        ### ⚠️ 注意事项 / Notes
         - 控制台窗口会显示详细的下载进度和错误信息
-        - 如遇问题请在 Issues 中反馈
+        - ARM 版本首次支持，如遇问题请反馈
         - 所有二进制文件都是独立运行的，无需安装 Python
+        - 如遇到问题，请在 Issues 中反馈并说明：
+          - 操作系统版本
+          - 设备架构
+          - 错误信息截图
+        
+        ### 🔧 故障排除 / Troubleshooting
+        
+        **Linux 执行权限问题：**
+        \`\`\`bash
+        chmod +x FanqieDownloader_Debug_linux_*
+        \`\`\`
+        
+        **macOS 安全提示：**
+        \`\`\`bash
+        xattr -cr FanqieDownloader_Debug_macos_*
+        \`\`\`
+        
+        **查看系统架构：**
+        - Windows: \`wmic os get osarchitecture\`
+        - Linux/macOS: \`uname -m\`
+        
+        ---
+        
+        💡 **提示**: 如果不确定下载哪个版本，可以在 Issues 中询问，说明你的设备型号和操作系统。
         EOF
         
     - name: 创建Release
