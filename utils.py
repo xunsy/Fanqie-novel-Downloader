@@ -18,21 +18,27 @@ except ImportError:
 
 def resource_path(relative_path: str) -> str:
     """
-    获取资源文件的绝对路径，兼容打包后的环境。
-    
+    获取资源文件的绝对路径，优先使用程序运行目录或可执行文件所在目录。
+    确保配置文件等资源能够持久化保存，不会因为程序重启而丢失。
+
     Args:
-        relative_path (str): 相对于项目根目录的路径
-        
+        relative_path (str): 相对于程序目录的路径
+
     Returns:
         str: 资源文件的绝对路径
     """
     try:
-        # PyInstaller 打包后的临时目录
-        base_path = sys._MEIPASS
-    except AttributeError:
-        # 开发环境，使用脚本所在目录
+        # 优先使用可执行文件所在目录（适用于打包后的环境）
+        if hasattr(sys, 'frozen') and hasattr(sys, '_MEIPASS'):
+            # PyInstaller打包环境：使用可执行文件所在目录
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # 开发环境：使用脚本所在目录
+            base_path = os.path.dirname(os.path.abspath(__file__))
+    except Exception:
+        # 备用方案：使用当前工作目录
         base_path = os.path.abspath(".")
-    
+
     return os.path.join(base_path, relative_path)
 
 def center_window_over_parent(child_window, parent_window):
