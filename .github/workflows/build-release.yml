@@ -1,5 +1,4 @@
-name: 编译并发布exe
-
+name: 多平台编译并发布
 on:
   push:
     branches: [ main, master ]
@@ -11,20 +10,85 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
-
+    strategy:
+      matrix:
+        include:
+          # Windows 平台
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            python-arch: x64
+            executable_ext: .exe
+          - os: windows-latest
+            platform: windows
+            arch: x86
+            python-arch: x86
+            executable_ext: .exe
+          # Windows ARM64 需要特殊处理，PyInstaller 支持有限
+          
+          # Linux 平台
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            python-arch: x64
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86
+            python-arch: x64  # 使用x64构建32位
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            python-arch: x64
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: armv7
+            python-arch: x64
+            executable_ext: ""
+            
+          # macOS 平台
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            python-arch: x64
+            executable_ext: ""
+          - os: macos-14  # Apple Silicon
+            platform: macos
+            arch: arm64
+            python-arch: arm64
+            executable_ext: ""
+    
+    runs-on: ${{ matrix.os }}
+    
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
       with:
         fetch-depth: 20
-
+        
     - name: 设置Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-
-    - name: 安装依赖
+        architecture: ${{ matrix.python-arch }}
+        
+    - name: 安装QEMU (Linux ARM构建)
+      if: matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7')
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-user-static binfmt-support
+        
+    - name: 安装构建工具 (Linux 32位)
+      if: matrix.platform == 'linux' && matrix.arch == 'x86'
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y gcc-multilib g++-multilib
+        
+    - name: 安装依赖 (Windows)
+      if: matrix.platform == 'windows'
       shell: pwsh
       run: |
         python -m pip install --upgrade pip
@@ -47,58 +111,235 @@ jobs:
         foreach ($package in $packages) {
           pip install $package
         }
-
-    - name: 验证PyInstaller配置文件
-      shell: pwsh
+        
+    - name: 安装依赖 (Unix系统)
+      if: matrix.platform != 'windows'
+      shell: bash
       run: |
-        if (Test-Path "build_console.spec") {
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        
+        packages=(
+          "customtkinter>=5.2.0"
+          "requests>=2.31.0"
+          "beautifulsoup4>=4.12.0"
+          "tqdm>=4.65.0"
+          "stem>=1.8.0"
+          "fake-useragent>=1.4.0"
+          "pycryptodome>=3.18.0"
+          "ebooklib>=0.18"
+          "lxml>=4.9.0"
+          "urllib3>=2.0.0"
+          "PySocks>=1.7.1"
+        )
+        
+        for package in "${packages[@]}"; do
+          pip install "$package"
+        done
+        
+    - name: 验证PyInstaller配置文件
+      shell: bash
+      run: |
+        if [ -f "build_console.spec" ]; then
           echo "✅ build_console.spec 文件存在"
-          Get-Content "build_console.spec" | Select-Object -First 10
-        } else {
+          head -10 build_console.spec || true
+        else
           echo "❌ build_console.spec 文件不存在"
           exit 1
-        }
-
-    - name: 编译exe
-      shell: pwsh
+        fi
+        
+    - name: 编译可执行文件
+      shell: bash
       run: |
-        pyinstaller build_console.spec --clean --noconfirm
+        # 为不同架构设置编译选项
+        EXTRA_ARGS=""
+        
+        # Linux ARM 交叉编译
+        if [[ "${{ matrix.platform }}" == "linux" ]]; then
+          case "${{ matrix.arch }}" in
+            arm64)
+              export PYINSTALLER_COMPILE_BOOTLOADER=1
+              export CC=aarch64-linux-gnu-gcc
+              export CXX=aarch64-linux-gnu-g++
+              ;;
+            armv7)
+              export PYINSTALLER_COMPILE_BOOTLOADER=1
+              export CC=arm-linux-gnueabihf-gcc
+              export CXX=arm-linux-gnueabihf-g++
+              ;;
+            x86)
+              export CFLAGS="-m32"
+              export LDFLAGS="-m32"
+              ;;
+          esac
+        fi
+        
+        pyinstaller build_console.spec --clean --noconfirm $EXTRA_ARGS
+        
+    - name: 重命名可执行文件
+      shell: bash
+      run: |
+        if [ "${{ matrix.platform }}" = "windows" ]; then
+          if [ -f "dist/FanqieDownloader_Debug.exe" ]; then
+            mv "dist/FanqieDownloader_Debug.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
+          fi
+        else
+          if [ -f "dist/FanqieDownloader_Debug" ]; then
+            mv "dist/FanqieDownloader_Debug" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+            chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          fi
+        fi
+        
+    - name: 列出编译结果
+      shell: bash
+      run: |
+        ls -la dist/
+        
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
+        path: |
+          dist/FanqieDownloader_Debug_*
+        retention-days: 30
 
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 20
+        
+    - name: 下载所有构建产物
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: 整理发布文件
+      run: |
+        mkdir -p release_files
+        find artifacts -name "FanqieDownloader_Debug_*" -type f -exec cp {} release_files/ \;
+        ls -la release_files/
+        
     - name: 生成版本信息
       id: version
-      shell: pwsh
+      env:
+        TZ: 'Asia/Shanghai'
       run: |
-        $version = "v$(Get-Date -Format 'yyyy.MM.dd.HHmm')"
-        echo "tag=$version" >> $env:GITHUB_OUTPUT
+        version="v$(date +'%Y.%m.%d.%H%M')"
+        echo "tag=$version" >> $GITHUB_OUTPUT
         git log --oneline -20 --pretty=format:"- %s" > commits.txt
-
+        
     - name: 创建发布说明文件
-      shell: pwsh
+      env:
+        TZ: 'Asia/Shanghai'
       run: |
-        $version = "${{ steps.version.outputs.tag }}"
-        $currentTime = Get-Date -Format 'yyyy-MM-dd HH-mm-ss'
-        $commitContent = Get-Content commits.txt -Raw
+        version="${{ steps.version.outputs.tag }}"
         
-        $content = "## Fanqie Novel Downloader $version`n`n"
-        $content += "### Release Time`n"
-        $content += "$currentTime`n`n"
-        $content += "### Updates`n"
-        $content += "$commitContent`n`n"
-        $content += "### Usage Instructions`n`n"
-        $content += "#### Version Description:`n"
-        $content += "- **FanqieDownloader_Debug.exe** - Console version for debugging and detailed information`n`n"
-        $content += "#### How to Use:`n"
-        $content += "1. Download the exe file`n"
-        $content += "2. Double-click to run`n"
-        $content += "3. Supports Windows 10+ systems`n"
-        $content += "4. Console window shows detailed runtime information`n`n"
-        $content += "### Notes`n"
-        $content += "- First run may be blocked by antivirus software, please add to trust list`n"
-        $content += "- Console window displays detailed download progress and error information`n"
-        $content += "- Please report issues in the Issues section`n"
+        # 获取各国时间
+        china_time=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S CST')
+        us_eastern_time=$(TZ='America/New_York' date +'%Y-%m-%d %H:%M:%S EST')
+        us_pacific_time=$(TZ='America/Los_Angeles' date +'%Y-%m-%d %H:%M:%S PST')
+        uk_time=$(TZ='Europe/London' date +'%Y-%m-%d %H:%M:%S GMT')
+        france_time=$(TZ='Europe/Paris' date +'%Y-%m-%d %H:%M:%S CET')
+        russia_time=$(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S MSK')
         
-        $content | Out-File -FilePath "release_notes.md" -Encoding UTF8
-
+        commit_content=$(cat commits.txt)
+        
+        cat > release_notes.md << EOF
+        ## Fanqie Novel Downloader $version
+        
+        ### 🌍 发布时间 / Release Time
+        
+        **多国时间 / Countries Time:**
+        - 🇨🇳 **中国 (北京)**: $china_time
+        - 🇺🇸 **美国 (纽约)**: $us_eastern_time
+        - 🇺🇸 **美国 (洛杉矶)**: $us_pacific_time
+        - 🇬🇧 **英国 (伦敦)**: $uk_time
+        - 🇫🇷 **法国 (巴黎)**: $france_time
+        - 🇷🇺 **俄罗斯 (莫斯科)**: $russia_time
+        
+        ### 📝 更新内容 / Updates
+        $commit_content
+        
+        ### 💻 平台支持 / Platform Support
+        
+        此版本支持以下平台和架构：
+        
+        #### Windows
+        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10/11 (64位) ✅
+        - **FanqieDownloader_Debug_windows_x86.exe** - Windows 7+ (32位) ✅
+        
+        #### Linux
+        - **FanqieDownloader_Debug_linux_x64** - Linux (64位 AMD/Intel) ✅
+        - **FanqieDownloader_Debug_linux_x86** - Linux (32位) ✅
+        - **FanqieDownloader_Debug_linux_arm64** - Linux ARM64 (树莓派4/5, ARM服务器) 🆕
+        - **FanqieDownloader_Debug_linux_armv7** - Linux ARMv7 (树莓派2/3, 32位ARM设备) 🆕
+        
+        #### macOS
+        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64位) ✅
+        - **FanqieDownloader_Debug_macos_arm64** - macOS Apple Silicon (M1/M2/M3) ✅
+        
+        ### 📖 使用说明 / Usage Instructions
+        
+        #### Windows 用户：
+        1. 根据系统位数下载对应的 .exe 文件
+        2. 双击运行
+        3. 如果不确定系统位数，建议下载 x86 版本（兼容性更好）
+        4. 首次运行可能被杀毒软件拦截，请添加信任
+        
+        #### Linux 用户：
+        1. 下载对应架构的二进制文件
+        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_linux_*\`
+        3. 运行：\`./FanqieDownloader_Debug_linux_*\`
+        4. 查看系统架构：\`uname -m\` (x86_64=x64, i686=x86, aarch64=arm64, armv7l=armv7)
+        
+        #### macOS 用户：
+        1. Intel Mac 选择 x64 版本，Apple Silicon (M系列) 选择 arm64 版本
+        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_macos_*\`
+        3. 运行：\`./FanqieDownloader_Debug_macos_*\`
+        4. 如被系统阻止，请在系统偏好设置 > 安全性与隐私中允许运行
+        5. 或使用命令：\`xattr -cr FanqieDownloader_Debug_macos_*\` 清除隔离属性
+        
+        #### 树莓派用户：
+        - 树莓派 2/3 (32位系统): 使用 armv7 版本
+        - 树莓派 4/5 (64位系统): 使用 arm64 版本
+        - 查看架构：\`dpkg --print-architecture\`
+        
+        ### ⚠️ 注意事项 / Notes
+        - 控制台窗口会显示详细的下载进度和错误信息
+        - ARM 版本首次支持，如遇问题请反馈
+        - 所有二进制文件都是独立运行的，无需安装 Python
+        - 如遇到问题，请在 Issues 中反馈并说明：
+          - 操作系统版本
+          - 设备架构
+          - 错误信息截图
+        
+        ### 🔧 故障排除 / Troubleshooting
+        
+        **Linux 执行权限问题：**
+        \`\`\`bash
+        chmod +x FanqieDownloader_Debug_linux_*
+        \`\`\`
+        
+        **macOS 安全提示：**
+        \`\`\`bash
+        xattr -cr FanqieDownloader_Debug_macos_*
+        \`\`\`
+        
+        **查看系统架构：**
+        - Windows: \`wmic os get osarchitecture\`
+        - Linux/macOS: \`uname -m\`
+        
+        ---
+        
+        💡 **提示**: 如果不确定下载哪个版本，可以在 Issues 中询问，说明你的设备型号和操作系统。
+        EOF
+        
     - name: 创建Release
       uses: softprops/action-gh-release@v1
       with:
@@ -106,7 +347,7 @@ jobs:
         name: Fanqie Novel Downloader ${{ steps.version.outputs.tag }}
         body_path: release_notes.md
         files: |
-          dist/FanqieDownloader_Debug.exe
+          release_files/*
         draft: false
         prerelease: false
       env:
