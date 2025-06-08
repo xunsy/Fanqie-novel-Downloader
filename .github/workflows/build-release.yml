@@ -3,9 +3,11 @@ on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+
 permissions:
   contents: write
   packages: write
+
 jobs:
   build:
     strategy:
@@ -15,23 +17,21 @@ jobs:
             platform: windows
             arch: x64
             executable_ext: .exe
-            shell: pwsh
           - os: ubuntu-latest
             platform: linux
             arch: x64
             executable_ext: ""
-            shell: bash
           - os: macos-latest
             platform: macos
             arch: x64
             executable_ext: ""
-            shell: bash
           - os: macos-14  # Apple Silicon
             platform: macos
             arch: arm64
             executable_ext: ""
-            shell: bash
+    
     runs-on: ${{ matrix.os }}
+    
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
@@ -94,9 +94,9 @@ jobs:
         done
         
     - name: 验证PyInstaller配置文件
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
-        if [ -f "build_console.spec" ] || [ -f "build_console.spec" ]; then
+        if [ -f "build_console.spec" ]; then
           echo "✅ build_console.spec 文件存在"
           head -10 build_console.spec || true
         else
@@ -105,12 +105,12 @@ jobs:
         fi
         
     - name: 编译可执行文件
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
         pyinstaller build_console.spec --clean --noconfirm
         
     - name: 重命名可执行文件
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
         if [ "${{ matrix.platform }}" = "windows" ]; then
           if [ -f "dist/FanqieDownloader_Debug.exe" ]; then
@@ -124,7 +124,7 @@ jobs:
         fi
         
     - name: 列出编译结果
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
         ls -la dist/
         
@@ -140,6 +140,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
