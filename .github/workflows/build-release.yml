@@ -160,61 +160,65 @@ jobs:
         
     - name: 生成版本信息
       id: version
+      env:
+        TZ: 'Asia/Shanghai'
       run: |
         version="v$(date +'%Y.%m.%d.%H%M')"
         echo "tag=$version" >> $GITHUB_OUTPUT
         git log --oneline -20 --pretty=format:"- %s" > commits.txt
         
     - name: 创建发布说明文件
+      env:
+        TZ: 'Asia/Shanghai'
       run: |
         version="${{ steps.version.outputs.tag }}"
-        current_time=$(date +'%Y-%m-%d %H:%M:%S')
+        current_time=$(date +'%Y-%m-%d %H:%M:%S CST')
         commit_content=$(cat commits.txt)
         
         cat > release_notes.md << EOF
         ## Fanqie Novel Downloader $version
         
-        ### Release Time
-        $current_time
+        ### 发布时间 / Release Time
+        $current_time (中国标准时间)
         
-        ### Updates
+        ### 更新内容 / Updates
         $commit_content
         
-        ### Platform Support
-        This release supports the following platforms:
+        ### 平台支持 / Platform Support
+        此版本支持以下平台：
         
         #### Windows
-        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10+ (64-bit)
+        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10+ (64位)
         
         #### Linux
-        - **FanqieDownloader_Debug_linux_x64** - Linux (64-bit)
+        - **FanqieDownloader_Debug_linux_x64** - Linux (64位)
         
         #### macOS
-        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64-bit)
+        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64位)
         - **FanqieDownloader_Debug_macos_arm64** - macOS Apple Silicon (M1/M2)
         
-        ### Usage Instructions
+        ### 使用说明 / Usage Instructions
         
-        #### For Windows:
-        1. Download the .exe file
-        2. Double-click to run
-        3. First run may be blocked by antivirus software, please add to trust list
+        #### Windows 用户：
+        1. 下载 .exe 文件
+        2. 双击运行
+        3. 首次运行可能被杀毒软件拦截，请添加信任
         
-        #### For Linux:
-        1. Download the binary file
-        2. Make it executable: \`chmod +x FanqieDownloader_Debug_linux_x64\`
-        3. Run: \`./FanqieDownloader_Debug_linux_x64\`
+        #### Linux 用户：
+        1. 下载对应的二进制文件
+        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_linux_x64\`
+        3. 运行：\`./FanqieDownloader_Debug_linux_x64\`
         
-        #### For macOS:
-        1. Download the appropriate binary (x64 for Intel Macs, arm64 for Apple Silicon)
-        2. Make it executable: \`chmod +x FanqieDownloader_Debug_macos_*\`
-        3. Run: \`./FanqieDownloader_Debug_macos_*\`
-        4. If blocked by Gatekeeper, go to System Preferences > Security & Privacy and allow the app
+        #### macOS 用户：
+        1. 下载对应版本（Intel Mac 选择 x64，Apple Silicon 选择 arm64）
+        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_macos_*\`
+        3. 运行：\`./FanqieDownloader_Debug_macos_*\`
+        4. 如被系统阻止，请在系统偏好设置 > 安全性与隐私中允许运行
         
-        ### Notes
-        - Console window displays detailed download progress and error information
-        - Please report issues in the Issues section
-        - All binaries are standalone and don't require Python installation
+        ### 注意事项 / Notes
+        - 控制台窗口会显示详细的下载进度和错误信息
+        - 如遇问题请在 Issues 中反馈
+        - 所有二进制文件都是独立运行的，无需安装 Python
         EOF
         
     - name: 创建Release
