@@ -27,7 +27,7 @@ except ImportError:
 
 # 默认主窗口几何尺寸和位置
 DEFAULT_WINDOW_CONFIG: Dict[str, Any] = {
-    "default_geometry": "800x600",
+    "default_geometry": "1300x850",
     "position": None
 }
 
@@ -64,8 +64,8 @@ READER_CONFIG: Dict[str, Any] = {
     "default_size": 14,
     "default_fg": "#DCE4EE",
     "default_bg": "#242424",
-    "default_width": 800,
-    "default_height": 750,
+    "default_width": 1000,
+    "default_height": 800,
     "padding": 10,
     "dark_mode": True,
     "auto_save_interval_ms": 30000
@@ -74,7 +74,8 @@ READER_CONFIG: Dict[str, Any] = {
 # 默认文件和路径相关配置
 FILE_CONFIG: Dict[str, str] = {
     "status_file_format": ".{book_id}.download_status",
-    "default_save_path": "downloads"
+    "default_save_path": "downloads",  # 保留向后兼容性
+    "last_save_path": ""  # 用户上次选择的保存路径，空字符串表示首次使用
 }
 
 # UI 主题配置 - 强制深色模式
