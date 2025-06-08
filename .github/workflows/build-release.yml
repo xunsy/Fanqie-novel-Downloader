@@ -1,30 +1,50 @@
-name: 编译并发布exe
-
+name: 多平台编译并发布
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
-
 permissions:
   contents: write
   packages: write
-
 jobs:
   build:
-    runs-on: windows-latest
-
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            executable_ext: .exe
+            shell: pwsh
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            executable_ext: ""
+            shell: bash
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            executable_ext: ""
+            shell: bash
+          - os: macos-14  # Apple Silicon
+            platform: macos
+            arch: arm64
+            executable_ext: ""
+            shell: bash
+    runs-on: ${{ matrix.os }}
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
       with:
         fetch-depth: 20
-
+        
     - name: 设置Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-
-    - name: 安装依赖
+        
+    - name: 安装依赖 (Windows)
+      if: matrix.platform == 'windows'
       shell: pwsh
       run: |
         python -m pip install --upgrade pip
@@ -47,58 +67,155 @@ jobs:
         foreach ($package in $packages) {
           pip install $package
         }
-
-    - name: 验证PyInstaller配置文件
-      shell: pwsh
+        
+    - name: 安装依赖 (Unix系统)
+      if: matrix.platform != 'windows'
+      shell: bash
       run: |
-        if (Test-Path "build_console.spec") {
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        
+        packages=(
+          "customtkinter>=5.2.0"
+          "requests>=2.31.0"
+          "beautifulsoup4>=4.12.0"
+          "tqdm>=4.65.0"
+          "stem>=1.8.0"
+          "fake-useragent>=1.4.0"
+          "pycryptodome>=3.18.0"
+          "ebooklib>=0.18"
+          "lxml>=4.9.0"
+          "urllib3>=2.0.0"
+          "PySocks>=1.7.1"
+        )
+        
+        for package in "${packages[@]}"; do
+          pip install "$package"
+        done
+        
+    - name: 验证PyInstaller配置文件
+      shell: ${{ matrix.shell }}
+      run: |
+        if [ -f "build_console.spec" ] || [ -f "build_console.spec" ]; then
           echo "✅ build_console.spec 文件存在"
-          Get-Content "build_console.spec" | Select-Object -First 10
-        } else {
+          head -10 build_console.spec || true
+        else
           echo "❌ build_console.spec 文件不存在"
           exit 1
-        }
-
-    - name: 编译exe
-      shell: pwsh
+        fi
+        
+    - name: 编译可执行文件
+      shell: ${{ matrix.shell }}
       run: |
         pyinstaller build_console.spec --clean --noconfirm
+        
+    - name: 重命名可执行文件
+      shell: ${{ matrix.shell }}
+      run: |
+        if [ "${{ matrix.platform }}" = "windows" ]; then
+          if [ -f "dist/FanqieDownloader_Debug.exe" ]; then
+            mv "dist/FanqieDownloader_Debug.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
+          fi
+        else
+          if [ -f "dist/FanqieDownloader_Debug" ]; then
+            mv "dist/FanqieDownloader_Debug" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+            chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          fi
+        fi
+        
+    - name: 列出编译结果
+      shell: ${{ matrix.shell }}
+      run: |
+        ls -la dist/
+        
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
+        path: |
+          dist/FanqieDownloader_Debug_*
+        retention-days: 30
 
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 20
+        
+    - name: 下载所有构建产物
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: 整理发布文件
+      run: |
+        mkdir -p release_files
+        find artifacts -name "FanqieDownloader_Debug_*" -type f -exec cp {} release_files/ \;
+        ls -la release_files/
+        
     - name: 生成版本信息
       id: version
-      shell: pwsh
       run: |
-        $version = "v$(Get-Date -Format 'yyyy.MM.dd.HHmm')"
-        echo "tag=$version" >> $env:GITHUB_OUTPUT
+        version="v$(date +'%Y.%m.%d.%H%M')"
+        echo "tag=$version" >> $GITHUB_OUTPUT
         git log --oneline -20 --pretty=format:"- %s" > commits.txt
-
+        
     - name: 创建发布说明文件
-      shell: pwsh
       run: |
-        $version = "${{ steps.version.outputs.tag }}"
-        $currentTime = Get-Date -Format 'yyyy-MM-dd HH-mm-ss'
-        $commitContent = Get-Content commits.txt -Raw
+        version="${{ steps.version.outputs.tag }}"
+        current_time=$(date +'%Y-%m-%d %H:%M:%S')
+        commit_content=$(cat commits.txt)
         
-        $content = "## Fanqie Novel Downloader $version`n`n"
-        $content += "### Release Time`n"
-        $content += "$currentTime`n`n"
-        $content += "### Updates`n"
-        $content += "$commitContent`n`n"
-        $content += "### Usage Instructions`n`n"
-        $content += "#### Version Description:`n"
-        $content += "- **FanqieDownloader_Debug.exe** - Console version for debugging and detailed information`n`n"
-        $content += "#### How to Use:`n"
-        $content += "1. Download the exe file`n"
-        $content += "2. Double-click to run`n"
-        $content += "3. Supports Windows 10+ systems`n"
-        $content += "4. Console window shows detailed runtime information`n`n"
-        $content += "### Notes`n"
-        $content += "- First run may be blocked by antivirus software, please add to trust list`n"
-        $content += "- Console window displays detailed download progress and error information`n"
-        $content += "- Please report issues in the Issues section`n"
+        cat > release_notes.md << EOF
+        ## Fanqie Novel Downloader $version
         
-        $content | Out-File -FilePath "release_notes.md" -Encoding UTF8
-
+        ### Release Time
+        $current_time
+        
+        ### Updates
+        $commit_content
+        
+        ### Platform Support
+        This release supports the following platforms:
+        
+        #### Windows
+        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10+ (64-bit)
+        
+        #### Linux
+        - **FanqieDownloader_Debug_linux_x64** - Linux (64-bit)
+        
+        #### macOS
+        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64-bit)
+        - **FanqieDownloader_Debug_macos_arm64** - macOS Apple Silicon (M1/M2)
+        
+        ### Usage Instructions
+        
+        #### For Windows:
+        1. Download the .exe file
+        2. Double-click to run
+        3. First run may be blocked by antivirus software, please add to trust list
+        
+        #### For Linux:
+        1. Download the binary file
+        2. Make it executable: \`chmod +x FanqieDownloader_Debug_linux_x64\`
+        3. Run: \`./FanqieDownloader_Debug_linux_x64\`
+        
+        #### For macOS:
+        1. Download the appropriate binary (x64 for Intel Macs, arm64 for Apple Silicon)
+        2. Make it executable: \`chmod +x FanqieDownloader_Debug_macos_*\`
+        3. Run: \`./FanqieDownloader_Debug_macos_*\`
+        4. If blocked by Gatekeeper, go to System Preferences > Security & Privacy and allow the app
+        
+        ### Notes
+        - Console window displays detailed download progress and error information
+        - Please report issues in the Issues section
+        - All binaries are standalone and don't require Python installation
+        EOF
+        
     - name: 创建Release
       uses: softprops/action-gh-release@v1
       with:
@@ -106,7 +223,7 @@ jobs:
         name: Fanqie Novel Downloader ${{ steps.version.outputs.tag }}
         body_path: release_notes.md
         files: |
-          dist/FanqieDownloader_Debug.exe
+          release_files/*
         draft: false
         prerelease: false
       env:
