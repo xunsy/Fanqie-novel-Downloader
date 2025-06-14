@@ -63,92 +63,90 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-    - name: 检出代码
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 20
-        
-    - name: 设置Python
+
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         architecture: ${{ matrix.python-arch }}
-        
-    - name: 安装系统依赖 (Linux)
+
+    - name: Install system dependencies (Linux)
       if: matrix.platform == 'linux'
       run: |
         sudo apt-get update
-        # 安装tkinter和其他GUI依赖
+        # Install tkinter and other GUI dependencies
         sudo apt-get install -y python3-tk python3-dev
-        # 安装其他必要的系统库
+        # Install other necessary system libraries
         sudo apt-get install -y libffi-dev libssl-dev
 
-    - name: 安装QEMU (Linux ARM构建)
+    - name: Install QEMU (Linux ARM builds)
       if: matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7')
       run: |
         sudo apt-get install -y qemu-user-static binfmt-support
 
-    - name: 安装构建工具 (Linux 32位)
+    - name: Install build tools (Linux 32-bit)
       if: matrix.platform == 'linux' && matrix.arch == 'x86'
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
         sudo apt-get install -y gcc-multilib g++-multilib
-        
-    - name: 安装依赖
+
+    - name: Install dependencies
       shell: bash
       run: |
         echo "Listing files in current directory:"
         ls -la
         python -m pip install --upgrade pip
         pip install pyinstaller
-        # 使用CI专用的requirements文件，避免tkinter安装问题
+        # Use CI-specific requirements file to avoid tkinter installation issues
         if [ -f "requirements-ci.txt" ]; then
-          echo "使用CI专用依赖文件..."
+          echo "Using CI-specific dependencies file..."
           pip install -r requirements-ci.txt
         else
-          echo "使用标准依赖文件..."
+          echo "Using standard dependencies file..."
           pip install -r requirements.txt
         fi
 
-    - name: 验证tkinter可用性
+    - name: Verify tkinter availability
       shell: bash
       run: |
-        echo "验证tkinter是否可用..."
-        python -c "import tkinter; print('tkinter可用')" || {
-          echo "tkinter不可用，尝试安装..."
+        echo "Checking tkinter availability..."
+        python -c "import tkinter; print('tkinter is available')" || {
+          echo "tkinter not available, trying to install..."
           if [[ "${{ matrix.platform }}" == "linux" ]]; then
             sudo apt-get install -y python3-tk
           elif [[ "${{ matrix.platform }}" == "macos" ]]; then
-            # macOS通常自带tkinter，如果没有可能需要重新安装Python
-            echo "macOS环境，tkinter应该已包含在Python中"
+            echo "macOS environment, tkinter should be included with Python"
           elif [[ "${{ matrix.platform }}" == "windows" ]]; then
-            # Windows环境，tkinter应该已包含在Python中
-            echo "Windows环境，tkinter应该已包含在Python中"
+            echo "Windows environment, tkinter should be included with Python"
           fi
-          python -c "import tkinter; print('tkinter现在可用')"
+          python -c "import tkinter; print('tkinter is now available')"
         }
         
 
         
-    - name: 验证PyInstaller配置文件
+    - name: Verify PyInstaller config file
       shell: bash
       run: |
         if [ -f "build_gui.spec" ]; then
-          echo "✅ build_gui.spec 文件存在"
+          echo "build_gui.spec file exists"
           head -10 build_gui.spec || true
         else
-          echo "❌ build_gui.spec 文件不存在"
+          echo "build_gui.spec file not found"
           exit 1
         fi
-        
-    - name: 编译可执行文件
+
+    - name: Build executable
       shell: bash
       run: |
-        # 为不同架构设置编译选项
+        # Set compilation options for different architectures
         EXTRA_ARGS=""
-        
-        # Linux ARM 交叉编译
+
+        # Linux ARM cross-compilation
         if [[ "${{ matrix.platform }}" == "linux" ]]; then
           case "${{ matrix.arch }}" in
             arm64)
@@ -167,10 +165,10 @@ jobs:
               ;;
           esac
         fi
-        
+
         pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
-        
-    - name: 重命名可执行文件
+
+    - name: Rename executable files
       shell: bash
       run: |
         if [ "${{ matrix.platform }}" = "windows" ]; then
@@ -183,13 +181,13 @@ jobs:
             chmod +x "dist/TomatoNovelDownloader_${{ matrix.platform }}_${{ matrix.arch }}"
           fi
         fi
-        
-    - name: 列出编译结果
+
+    - name: List build results
       shell: bash
       run: |
         ls -la dist/
-        
-    - name: 上传构建产物
+
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
@@ -203,23 +201,23 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     
     steps:
-    - name: 检出代码
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 20
-        
-    - name: 下载所有构建产物
+
+    - name: Download all build artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-        
-    - name: 整理发布文件
+
+    - name: Organize release files
       run: |
         mkdir -p release_files
         find artifacts -name "TomatoNovelDownloader_*" -type f -exec cp {} release_files/ \;
         ls -la release_files/
-        
-    - name: 生成版本信息
+
+    - name: Generate version info
       id: version
       env:
         TZ: 'Asia/Shanghai'
@@ -227,8 +225,8 @@ jobs:
         version="v$(date +'%Y.%m.%d.%H%M')"
         echo "tag=$version" >> $GITHUB_OUTPUT
         git log --oneline -20 --pretty=format:"- %s" > commits.txt
-        
-    - name: 创建发布说明文件
+
+    - name: Create release notes file
       env:
         TZ: 'Asia/Shanghai'
       run: |
@@ -333,8 +331,8 @@ jobs:
         
         💡 **提示**: 如果不确定下载哪个版本，可以在 Issues 中询问，说明你的设备型号和操作系统。
         EOF
-        
-    - name: 创建Release
+
+    - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.version.outputs.tag }}
