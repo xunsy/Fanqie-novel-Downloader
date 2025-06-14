@@ -2,8 +2,7 @@
 全局配置文件管理模块。
 
 定义默认配置，并提供加载和保存用户自定义配置的功能。
-用户配置存储在程序运行目录或可执行文件所在目录下的 `user_config.json` 文件中。
-这样确保配置文件能够持久化保存，不会因为程序重启而丢失。
+用户配置存储在操作系统推荐的标准用户数据目录中，以实现跨平台兼容性。
 """
 
 import os
@@ -13,29 +12,24 @@ from typing import Dict, Any, List
 import atexit
 import time
 import copy
+import platformdirs
 
-# 导入 resource_path
-try:
-    from utils import resource_path
-except ImportError:
-    def resource_path(relative_path):
-        """
-        获取资源文件的绝对路径，优先使用程序运行目录或可执行文件所在目录。
-        确保配置文件等资源能够持久化保存，不会因为程序重启而丢失。
-        """
-        try:
-            # 优先使用可执行文件所在目录（适用于打包后的环境）
-            if hasattr(sys, 'frozen') and hasattr(sys, '_MEIPASS'):
-                # PyInstaller打包环境：使用可执行文件所在目录
-                base_path = os.path.dirname(sys.executable)
-            else:
-                # 开发环境：使用脚本所在目录
-                base_path = os.path.dirname(os.path.abspath(__file__))
-        except Exception:
-            # 备用方案：使用当前工作目录
-            base_path = os.path.abspath(".")
+# --- 应用信息 ---
+APP_NAME = "TomatoNovelDownloader"
+APP_AUTHOR = "User"
 
-        return os.path.join(base_path, relative_path)
+# --- 配置文件路径管理 ---
+
+def get_user_config_path() -> str:
+    """
+    获取跨平台的用户配置文件路径。
+    使用 platformdirs 确保配置文件存储在操作系统推荐的位置。
+    """
+    config_dir = platformdirs.user_config_path(APP_NAME, APP_AUTHOR)
+    # 确保目录存在
+    os.makedirs(config_dir, exist_ok=True)
+    return os.path.join(config_dir, "user_config.json")
+
 
 # --- 默认配置常量 ---
 
@@ -128,7 +122,7 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
 }
 
 # 用户配置文件路径
-USER_CONFIG_FILE_PATH = resource_path("user_config.json")
+USER_CONFIG_FILE_PATH = get_user_config_path()
 
 def load_user_config() -> Dict[str, Dict[str, Any]]:
     """加载用户配置文件"""

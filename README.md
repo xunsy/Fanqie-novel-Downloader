@@ -216,3 +216,15 @@ Fanqie-novel-Downloader/
 ---
 
 **⭐ 如果这个项目对您有帮助，请给个Star支持一下！**
+
+---
+
+## 配置文件
+
+为了更好地遵循不同操作系统的规范并提高应用的健壮性，用户配置文件 (`user_config.json`) 现在存储在系统推荐的标准位置。
+
+-   **Windows**: `C:\Users\<你的用户名>\AppData\Local\User\TomatoNovelDownloader\user_config.json`
+-   **macOS**: `~/Library/Application Support/TomatoNovelDownloader/user_config.json`
+-   **Linux**: `~/.config/TomatoNovelDownloader/user_config.json`
+
+这一改动使得应用不再将配置文件散落在程序目录中，更加整洁和规范。
