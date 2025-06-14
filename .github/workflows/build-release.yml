@@ -74,12 +74,20 @@ jobs:
         python-version: '3.11'
         architecture: ${{ matrix.python-arch }}
         
+    - name: 安装系统依赖 (Linux)
+      if: matrix.platform == 'linux'
+      run: |
+        sudo apt-get update
+        # 安装tkinter和其他GUI依赖
+        sudo apt-get install -y python3-tk python3-dev
+        # 安装其他必要的系统库
+        sudo apt-get install -y libffi-dev libssl-dev
+
     - name: 安装QEMU (Linux ARM构建)
       if: matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7')
       run: |
-        sudo apt-get update
         sudo apt-get install -y qemu-user-static binfmt-support
-        
+
     - name: 安装构建工具 (Linux 32位)
       if: matrix.platform == 'linux' && matrix.arch == 'x86'
       run: |
@@ -94,7 +102,29 @@ jobs:
         ls -la
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install -r requirements.txt
+        # 使用CI专用的requirements文件，避免tkinter安装问题
+        if [ -f "requirements-ci.txt" ]; then
+          echo "使用CI专用依赖文件..."
+          pip install -r requirements-ci.txt
+        else
+          echo "使用标准依赖文件..."
+          pip install -r requirements.txt
+        fi
+
+    - name: 验证tkinter可用性
+      shell: bash
+      run: |
+        echo "验证tkinter是否可用..."
+        python -c "import tkinter; print('✅ tkinter可用')" || {
+          echo "❌ tkinter不可用，尝试安装..."
+          if [[ "${{ matrix.platform }}" == "linux" ]]; then
+            sudo apt-get install -y python3-tk
+          elif [[ "${{ matrix.platform }}" == "macos" ]]; then
+            # macOS通常自带tkinter，如果没有可能需要重新安装Python
+            echo "macOS环境，tkinter应该已包含在Python中"
+          fi
+          python -c "import tkinter; print('✅ tkinter现在可用')"
+        }
         
 
         

@@ -65,6 +65,8 @@
     pip install -r requirements.txt
     ```
 
+    > **注意**: 如果遇到 `tkinter` 安装错误，请参考 [TKINTER_SETUP.md](TKINTER_SETUP.md) 获取详细解决方案。
+
 ### ▶️ 启动程序
 
 -   **GUI版本 (推荐)**:
