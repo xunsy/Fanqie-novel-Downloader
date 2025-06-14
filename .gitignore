@@ -218,6 +218,7 @@ cython_debug/
 user_config.json
 chapter.json
 *.txt
+!requirements.txt
 *.epub
 downloads/
 temp/

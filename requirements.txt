@@ -1,0 +1,45 @@
+# 番茄小说下载器依赖包列表
+customtkinter
+ebooklib
+requests
+beautifulsoup4
+stem
+tqdm
+fake-useragent
+pycryptodome
+
+platformdirs
+
+# GUI界面相关
+customtkinter>=5.2.0
+tkinter
+
+# 网络请求相关
+requests>=2.31.0
+urllib3>=2.0.0
+
+# HTML解析
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# 进度条显示
+tqdm>=4.65.0
+
+# Tor网络支持
+stem>=1.8.0
+PySocks>=1.7.1
+
+# 用户代理伪装
+fake-useragent>=1.4.0
+
+# 加密解密
+pycryptodome>=3.18.0
+
+# EPUB生成
+ebooklib>=0.18
+
+# 类型提示
+typing-extensions>=4.7.0
+
+# 其他标准库增强
+chardet>=5.2.0
