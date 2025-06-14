@@ -248,4 +248,3 @@ desktop.ini
 2.py
 temp_*
 test_*
-!test_dependencies.py

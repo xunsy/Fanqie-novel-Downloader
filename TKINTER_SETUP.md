@@ -78,8 +78,8 @@ RUN pip install -r requirements-ci.txt
 # 测试tkinter是否可用
 try:
     import tkinter as tk
-    print("✅ tkinter可用")
-    
+    print("tkinter可用")
+
     # 创建一个简单的测试窗口
     root = tk.Tk()
     root.title("Tkinter测试")
@@ -87,9 +87,9 @@ try:
     label = tk.Label(root, text="Tkinter工作正常!")
     label.pack(pady=20)
     root.mainloop()
-    
+
 except ImportError as e:
-    print(f"❌ tkinter不可用: {e}")
+    print(f"tkinter不可用: {e}")
     print("请按照上述说明安装tkinter")
 ```
 
