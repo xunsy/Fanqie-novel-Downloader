@@ -87,64 +87,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc-multilib g++-multilib
         
-    - name: 安装依赖 (Windows)
-      if: matrix.platform == 'windows'
-      shell: pwsh
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller
-        
-        $packages = @(
-          "customtkinter>=5.2.0",
-          "requests>=2.31.0",
-          "beautifulsoup4>=4.12.0",
-          "tqdm>=4.65.0",
-          "stem>=1.8.0",
-          "fake-useragent>=1.4.0",
-          "pycryptodome>=3.18.0",
-          "ebooklib>=0.18",
-          "lxml>=4.9.0",
-          "urllib3>=2.0.0",
-          "PySocks>=1.7.1"
-        )
-        
-        foreach ($package in $packages) {
-          pip install $package
-        }
-        
-    - name: 安装依赖 (Unix系统)
-      if: matrix.platform != 'windows'
+    - name: 安装依赖
       shell: bash
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
+        pip install -r requirements.txt
         
-        packages=(
-          "customtkinter>=5.2.0"
-          "requests>=2.31.0"
-          "beautifulsoup4>=4.12.0"
-          "tqdm>=4.65.0"
-          "stem>=1.8.0"
-          "fake-useragent>=1.4.0"
-          "pycryptodome>=3.18.0"
-          "ebooklib>=0.18"
-          "lxml>=4.9.0"
-          "urllib3>=2.0.0"
-          "PySocks>=1.7.1"
-        )
-        
-        for package in "${packages[@]}"; do
-          pip install "$package"
-        done
+
         
     - name: 验证PyInstaller配置文件
       shell: bash
       run: |
-        if [ -f "build_console.spec" ]; then
-          echo "✅ build_console.spec 文件存在"
-          head -10 build_console.spec || true
+        if [ -f "build_gui.spec" ]; then
+          echo "✅ build_gui.spec 文件存在"
+          head -10 build_gui.spec || true
         else
-          echo "❌ build_console.spec 文件不存在"
+          echo "❌ build_gui.spec 文件不存在"
           exit 1
         fi
         
@@ -174,19 +133,19 @@ jobs:
           esac
         fi
         
-        pyinstaller build_console.spec --clean --noconfirm $EXTRA_ARGS
+        pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
         
     - name: 重命名可执行文件
       shell: bash
       run: |
         if [ "${{ matrix.platform }}" = "windows" ]; then
-          if [ -f "dist/FanqieDownloader_Debug.exe" ]; then
-            mv "dist/FanqieDownloader_Debug.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
+          if [ -f "dist/TomatoNovelDownloader.exe" ]; then
+            mv "dist/TomatoNovelDownloader.exe" "dist/TomatoNovelDownloader_windows_${{ matrix.arch }}.exe"
           fi
         else
-          if [ -f "dist/FanqieDownloader_Debug" ]; then
-            mv "dist/FanqieDownloader_Debug" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
-            chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          if [ -f "dist/TomatoNovelDownloader" ]; then
+            mv "dist/TomatoNovelDownloader" "dist/TomatoNovelDownloader_${{ matrix.platform }}_${{ matrix.arch }}"
+            chmod +x "dist/TomatoNovelDownloader_${{ matrix.platform }}_${{ matrix.arch }}"
           fi
         fi
         
@@ -200,7 +159,7 @@ jobs:
       with:
         name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
         path: |
-          dist/FanqieDownloader_Debug_*
+          dist/TomatoNovelDownloader_*
         retention-days: 30
 
   release:
@@ -222,7 +181,7 @@ jobs:
     - name: 整理发布文件
       run: |
         mkdir -p release_files
-        find artifacts -name "FanqieDownloader_Debug_*" -type f -exec cp {} release_files/ \;
+        find artifacts -name "TomatoNovelDownloader_*" -type f -exec cp {} release_files/ \;
         ls -la release_files/
         
     - name: 生成版本信息
