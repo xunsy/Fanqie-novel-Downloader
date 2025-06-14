@@ -90,6 +90,8 @@ jobs:
     - name: 安装依赖
       shell: bash
       run: |
+        echo "Listing files in current directory:"
+        ls -la
         python -m pip install --upgrade pip
         pip install pyinstaller
         pip install -r requirements.txt
