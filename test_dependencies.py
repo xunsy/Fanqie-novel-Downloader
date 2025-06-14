@@ -27,7 +27,7 @@ def test_import(module_name: str, package_name: str = None) -> Tuple[bool, str]:
 
 def main():
     """主测试函数"""
-    print("🔍 开始检查依赖包...")
+    print("开始检查依赖包...")
     print("=" * 50)
     
     # 定义要测试的依赖包
@@ -62,45 +62,45 @@ def main():
         success, error = test_import(module_name)
         
         if success:
-            print(f"✅ {display_name}")
+            print(f"[OK] {display_name}")
             success_count += 1
         else:
-            print(f"❌ {display_name} - {error}")
+            print(f"[FAIL] {display_name} - {error}")
             failed_packages.append((display_name, error))
     
     print("=" * 50)
-    print(f"📊 测试结果: {success_count}/{len(dependencies)} 个包可用")
-    
+    print(f"测试结果: {success_count}/{len(dependencies)} 个包可用")
+
     if failed_packages:
-        print("\n❌ 失败的包:")
+        print("\n失败的包:")
         for package, error in failed_packages:
             print(f"   - {package}: {error}")
-        
-        print("\n🔧 解决建议:")
+
+        print("\n解决建议:")
         if any("tkinter" in pkg[0] for pkg in failed_packages):
             print("   - tkinter问题: 请参考 TKINTER_SETUP.md")
-        
+
         print("   - 其他包问题: 运行 'pip install -r requirements.txt'")
         print("   - CI环境: 使用 'pip install -r requirements-ci.txt'")
-        
+
         return 1
     else:
-        print("\n🎉 所有依赖包都已正确安装!")
+        print("\n所有依赖包都已正确安装!")
         
         # 额外测试：尝试创建GUI窗口
         try:
-            print("\n🖥️ 测试GUI功能...")
+            print("\n测试GUI功能...")
             import tkinter as tk
             import customtkinter as ctk
-            
+
             # 创建测试窗口（不显示）
             root = ctk.CTk()
             root.withdraw()  # 隐藏窗口
             root.destroy()
-            
-            print("✅ GUI功能测试通过")
+
+            print("[OK] GUI功能测试通过")
         except Exception as e:
-            print(f"⚠️ GUI功能测试失败: {e}")
+            print(f"[WARN] GUI功能测试失败: {e}")
             print("   这可能是因为运行在无显示环境中（如CI）")
         
         return 0
@@ -109,10 +109,10 @@ if __name__ == "__main__":
     exit_code = main()
     
     if exit_code == 0:
-        print("\n🚀 环境检查完成，可以运行程序了!")
+        print("\n环境检查完成，可以运行程序了!")
         print("   - GUI版本: python main.py")
         print("   - 命令行版本: python cli.py")
     else:
-        print("\n⚠️ 请解决上述依赖问题后再运行程序")
+        print("\n请解决上述依赖问题后再运行程序")
     
     sys.exit(exit_code)

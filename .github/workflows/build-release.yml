@@ -115,15 +115,18 @@ jobs:
       shell: bash
       run: |
         echo "验证tkinter是否可用..."
-        python -c "import tkinter; print('✅ tkinter可用')" || {
-          echo "❌ tkinter不可用，尝试安装..."
+        python -c "import tkinter; print('tkinter可用')" || {
+          echo "tkinter不可用，尝试安装..."
           if [[ "${{ matrix.platform }}" == "linux" ]]; then
             sudo apt-get install -y python3-tk
           elif [[ "${{ matrix.platform }}" == "macos" ]]; then
             # macOS通常自带tkinter，如果没有可能需要重新安装Python
             echo "macOS环境，tkinter应该已包含在Python中"
+          elif [[ "${{ matrix.platform }}" == "windows" ]]; then
+            # Windows环境，tkinter应该已包含在Python中
+            echo "Windows环境，tkinter应该已包含在Python中"
           fi
-          python -c "import tkinter; print('✅ tkinter现在可用')"
+          python -c "import tkinter; print('tkinter现在可用')"
         }
         
 
