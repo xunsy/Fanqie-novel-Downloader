@@ -219,6 +219,7 @@ user_config.json
 chapter.json
 *.txt
 !requirements.txt
+!requirements-ci.txt
 *.epub
 downloads/
 temp/
@@ -247,3 +248,4 @@ desktop.ini
 2.py
 temp_*
 test_*
+!test_dependencies.py
