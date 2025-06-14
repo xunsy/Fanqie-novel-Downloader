@@ -1,14 +1,4 @@
 # 番茄小说下载器依赖包列表
-customtkinter
-ebooklib
-requests
-beautifulsoup4
-stem
-tqdm
-fake-useragent
-pycryptodome
-
-platformdirs
 
 # GUI界面相关
 customtkinter>=5.2.0

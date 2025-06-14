@@ -43,15 +43,13 @@
 3. **跨环境兼容**: 在开发环境和打包环境下都能正常工作
 4. **向后兼容**: 保持现有的配置文件格式和内容结构不变
 
-## 测试验证
+## 功能验证
 
-### 基础功能测试 (`test_config_path.py`)
+配置路径修改已完成并验证：
 - ✅ resource_path函数路径正确性
 - ✅ 配置文件加载功能
-- ✅ 配置文件保存功能  
+- ✅ 配置文件保存功能
 - ✅ 配置文件持久化验证
-
-### 环境兼容性测试 (`test_packaged_environment.py`)
 - ✅ 模拟PyInstaller打包环境
 - ✅ 开发环境测试
 - ✅ 异常情况备用方案测试
@@ -82,15 +80,9 @@
 - ✅ 现有配置文件格式
 - ✅ 现有功能不受影响
 
-## 测试命令
+## 验证命令
 
 ```bash
-# 运行基础功能测试
-python test_config_path.py
-
-# 运行环境兼容性测试  
-python test_packaged_environment.py
-
 # 验证配置加载
 python -c "from config import CONFIG, USER_CONFIG_FILE_PATH; print(f'配置文件路径: {USER_CONFIG_FILE_PATH}')"
 ```

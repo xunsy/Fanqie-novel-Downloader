@@ -9,77 +9,6 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# PyInstaller
-#  Usually these files are written by a CI, but they should be ignored by default.
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-.pytest_cache/
-.hypothesis/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -100,8 +29,8 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.pyc
+# 保留自定义的spec文件
 # *.spec
-# *.spec  # 注释掉，我们需要保留自定义的spec文件
 
 # Installer logs
 pip-log.txt
