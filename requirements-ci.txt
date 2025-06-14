@@ -36,4 +36,4 @@ typing-extensions>=4.7.0
 chardet>=5.2.0
 
 # 平台目录管理
-platformdirs
+platformdirs>=3.0.0
