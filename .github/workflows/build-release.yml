@@ -57,52 +57,64 @@ jobs:
             arch: arm64
             python-arch: arm64
             executable_ext: ""
-
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
-          architecture: ${{ matrix['python-arch'] }}
+          python-version: "3.11"
+          architecture: ${{ matrix.python-arch }}
 
-      - name: Install system dependencies (Linux)
+      - name: Install Linux dependencies
         if: ${{ matrix.platform == 'linux' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk python3-dev libffi-dev libssl-dev
+          sudo apt-get install -y \
+            python3-tk \
+            python3-dev \
+            libffi-dev \
+            libssl-dev
 
-      - name: Install QEMU support (Linux ARM)
+      - name: Setup QEMU (ARM builds)
         if: ${{ matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7') }}
         run: sudo apt-get install -y qemu-user-static binfmt-support
 
-      - name: Install 32-bit build tools (Linux i386)
+      - name: Install 32-bit toolchain (Linux x86)
         if: ${{ matrix.platform == 'linux' && matrix.arch == 'x86' }}
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y gcc-multilib g++-multilib
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install pyinstaller
-          if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; else pip install -r requirements.txt; fi
+          if [ -f requirements-ci.txt ]; then
+            pip install -r requirements-ci.txt
+          else
+            pip install -r requirements.txt
+          fi
 
       - name: Build executable
         run: |
           EXTRA_ARGS=""
+          
+          # macOS specific build
           if [[ "${{ matrix.platform }}" == "macos" ]]; then
             if [[ "${{ matrix.arch }}" == "x64" ]]; then
-              echo "Building macOS x64 (Intel)…"
+              echo "▄▄▄ Building macOS x64 (Intel) ▄▄▄"
               arch -x86_64 pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
             else
-              echo "Building macOS arm64 (Apple Silicon)…"
+              echo "▄▄▄ Building macOS arm64 (Apple Silicon) ▄▄▄"
               pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
             fi
+          
+          # Linux specific build
           elif [[ "${{ matrix.platform }}" == "linux" ]]; then
             case "${{ matrix.arch }}" in
               arm64)
@@ -121,72 +133,97 @@ jobs:
                 ;;
             esac
             pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+          
+          # Windows and others
           else
             pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
           fi
 
       - name: Rename artifacts
         run: |
-          out="dist/TomatoNovelDownloader"
+          SOURCE_PATH="dist/TomatoNovelDownloader"
+          DEST_PREFIX="FanqieDownloader_Debug"
+          
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
-            mv "${out}.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
+            mv "${SOURCE_PATH}.exe" "dist/${DEST_PREFIX}_windows_${{ matrix.arch }}.exe"
           else
-            mv "${out}" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
-            chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+            mv "${SOURCE_PATH}" "dist/${DEST_PREFIX}_${{ matrix.platform }}_${{ matrix.arch }}"
+            chmod +x "dist/${DEST_PREFIX}_${{ matrix.platform }}_${{ matrix.arch }}"
           fi
 
-      - name: Show built file info
+      - name: Verify binary
         run: |
-          ls -la dist/
-          file dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}
+          ls -lh dist/
+          file "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/FanqieDownloader_Debug_*
+          name: fanqie-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}*
+            !*.dmg  # 排除不必要的文件
 
   release:
-    needs: build
+    needs: [build]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # 这里是修复行：将 `with: path: artifacts` 改为正确缩进
-      - uses: actions/download-artifact@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: fanqie-*
 
-      - name: Prepare release
+      - name: Prepare release assets
         id: prepare
         run: |
-          mkdir release_files
-          cp artifacts/* release_files/
-          version="v$(date -u +'%Y.%m.%d.%H%M')"
-          echo "tag=$version" >> $GITHUB_OUTPUT
-          git log -20 --pretty=format:"- %s" > commits.txt
+          # 创建干净的发布目录
+          mkdir -p release_files
+          
+          # 整理所有平台的可执行文件
+          find artifacts/ -name "FanqieDownloader*" -exec cp {} release_files/ \;
+          
+          # 生成版本号（格式：v年.月.日.分钟）
+          RELEASE_TAG="v$(date -u +'%Y.%m.%d.%H%M')"
+          echo "Generated release tag: $RELEASE_TAG"
+          
+          # 写入GitHub Actions变量
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          
+          # 生成更新日志（最近20条提交）
+          git log -20 --date=short --pretty=format:"- %ad %h: %s" > release_files/changelog.txt
 
-      - name: Draft release notes
+      - name: Generate release notes
         run: |
-          cat > release_notes.md <<EOF
-## Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
+          cat << EOF > release_notes.md
+          # 🍅 Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
+          
+          ### 🔧 支持平台
+          - **macOS**
+            - Intel 64-bit: \`FanqieDownloader_Debug_macos_x64\`
+            - Apple Silicon: \`FanqieDownloader_Debug_macos_arm64\`
+          - **Windows**
+            - 64-bit: \`FanqieDownloader_Debug_windows_x64.exe\`
+            - 32-bit: \`FanqieDownloader_Debug_windows_x86.exe\`
+          - **Linux**
+            - 主流架构: x64/x86/arm64/armv7
+          
+          ### 📄 更新日志
+          $(cat release_files/changelog.txt)
+          EOF
 
-### 🖥️ 支持平台
-- macOS Intel: FanqieDownloader_Debug_macos_x64  
-- macOS Apple Silicon: FanqieDownloader_Debug_macos_arm64  
-- Windows x64/x86, Linux x64/x86/arm64/armv7
-
-### 🔧 更新日志
-$(cat commits.txt)
-EOF
-
-      - name: Create GitHub Release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.prepare.outputs.tag }}
-          name: Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
+          name: "番茄小说下载器 ${{ steps.prepare.outputs.tag }}"
           body_path: release_notes.md
-          files: release_files/*
+          files: |
+            release_files/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
