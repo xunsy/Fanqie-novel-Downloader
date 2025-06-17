@@ -152,6 +152,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # 这里是修复行：将 `with: path: artifacts` 改为正确缩进
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
