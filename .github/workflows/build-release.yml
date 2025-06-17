@@ -1,7 +1,8 @@
 name: 多平台编译并发布
+
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -13,82 +14,39 @@ jobs:
     strategy:
       matrix:
         include:
-          # Windows 平台
-          - os: windows-latest
-            platform: windows
-            arch: x64
-            python-arch: x64
-            executable_ext: .exe
-          - os: windows-latest
-            platform: windows
-            arch: x86
-            python-arch: x86
-            executable_ext: .exe
-          # Windows ARM64 需要特殊处理，PyInstaller 支持有限
-          
-          # Linux 平台
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            python-arch: x64
-            executable_ext: ""
-          - os: ubuntu-latest
-            platform: linux
-            arch: x86
-            python-arch: x64  # 使用x64构建32位
-            executable_ext: ""
-          - os: ubuntu-latest
-            platform: linux
-            arch: arm64
-            python-arch: x64
-            executable_ext: ""
-          - os: ubuntu-latest
-            platform: linux
-            arch: armv7
-            python-arch: x64
-            executable_ext: ""
-            
-          # macOS 平台
-          - os: macos-latest
-            platform: macos
-            arch: x64
-            python-arch: x64
-            executable_ext: ""
-          - os: macos-14  # Apple Silicon
-            platform: macos
-            arch: arm64
-            python-arch: arm64
-            executable_ext: ""
-    
+          # Windows
+          - os: windows-latest; platform: windows; arch: x64; python-arch: x64; executable_ext: .exe
+          - os: windows-latest; platform: windows; arch: x86; python-arch: x86; executable_ext: .exe
+          # Linux
+          - os: ubuntu-latest; platform: linux; arch: x64; python-arch: x64; executable_ext: ""
+          - os: ubuntu-latest; platform: linux; arch: x86; python-arch: x64; executable_ext: ""
+          - os: ubuntu-latest; platform: linux; arch: arm64; python-arch: x64; executable_ext: ""
+          - os: ubuntu-latest; platform: linux; arch: armv7; python-arch: x64; executable_ext: ""
+          # macOS
+          - os: macos-latest; platform: macos; arch: x64; python-arch: x64; executable_ext: ""
+          - os: macos-14; platform: macos; arch: arm64; python-arch: arm64; executable_ext: ""
     runs-on: ${{ matrix.os }}
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 20
+    - uses: actions/checkout@v4
 
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
-        architecture: ${{ matrix.python-arch }}
+        python-version: 3.11
+        architecture: ${{ matrix['python-arch'] }}
 
     - name: Install system dependencies (Linux)
       if: matrix.platform == 'linux'
       run: |
         sudo apt-get update
-        # Install tkinter and other GUI dependencies
-        sudo apt-get install -y python3-tk python3-dev
-        # Install other necessary system libraries
-        sudo apt-get install -y libffi-dev libssl-dev
+        sudo apt-get install -y python3-tk python3-dev libffi-dev libssl-dev
 
-    - name: Install QEMU (Linux ARM builds)
+    - name: Install QEMU support (Linux ARM)
       if: matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7')
-      run: |
-        sudo apt-get install -y qemu-user-static binfmt-support
+      run: sudo apt-get install -y qemu-user-static binfmt-support
 
-    - name: Install build tools (Linux 32-bit)
+    - name: Install 32-bit build tools (Linux i386)
       if: matrix.platform == 'linux' && matrix.arch == 'x86'
       run: |
         sudo dpkg --add-architecture i386
@@ -96,58 +54,25 @@ jobs:
         sudo apt-get install -y gcc-multilib g++-multilib
 
     - name: Install dependencies
-      shell: bash
       run: |
-        echo "Listing files in current directory:"
-        ls -la
-        python -m pip install --upgrade pip
+        pip install --upgrade pip
         pip install pyinstaller
-        # Use CI-specific requirements file to avoid tkinter installation issues
-        if [ -f "requirements-ci.txt" ]; then
-          echo "Using CI-specific dependencies file..."
-          pip install -r requirements-ci.txt
-        else
-          echo "Using standard dependencies file..."
-          pip install -r requirements.txt
-        fi
-
-    - name: Verify tkinter availability
-      shell: bash
-      run: |
-        echo "Checking tkinter availability..."
-        python -c "import tkinter; print('tkinter is available')" || {
-          echo "tkinter not available, trying to install..."
-          if [[ "${{ matrix.platform }}" == "linux" ]]; then
-            sudo apt-get install -y python3-tk
-          elif [[ "${{ matrix.platform }}" == "macos" ]]; then
-            echo "macOS environment, tkinter should be included with Python"
-          elif [[ "${{ matrix.platform }}" == "windows" ]]; then
-            echo "Windows environment, tkinter should be included with Python"
-          fi
-          python -c "import tkinter; print('tkinter is now available')"
-        }
-        
-
-        
-    - name: Verify PyInstaller config file
-      shell: bash
-      run: |
-        if [ -f "build_gui.spec" ]; then
-          echo "build_gui.spec file exists"
-          head -10 build_gui.spec || true
-        else
-          echo "build_gui.spec file not found"
-          exit 1
-        fi
+        if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; else pip install -r requirements.txt; fi
 
     - name: Build executable
-      shell: bash
       run: |
-        # Set compilation options for different architectures
         EXTRA_ARGS=""
-
-        # Linux ARM cross-compilation
-        if [[ "${{ matrix.platform }}" == "linux" ]]; then
+        # macOS：区分 Intel 和 Apple Silicon
+        if [[ "${{ matrix.platform }}" == "macos" ]]; then
+          if [[ "${{ matrix.arch }}" == "x64" ]]; then
+            # 强制通过 Rosetta 在 Intel 模式下运行
+            echo "Building macOS x64 (Intel)…"
+            arch -x86_64 pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+          else
+            echo "Building macOS arm64 (Apple Silicon)…"
+            pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+          fi
+        elif [[ "${{ matrix.platform }}" == "linux" ]]; then
           case "${{ matrix.arch }}" in
             arm64)
               export PYINSTALLER_COMPILE_BOOTLOADER=1
@@ -164,183 +89,69 @@ jobs:
               export LDFLAGS="-m32"
               ;;
           esac
-        fi
-
-        pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
-
-    - name: Rename executable files
-      shell: bash
-      run: |
-        if [ "${{ matrix.platform }}" = "windows" ]; then
-          if [ -f "dist/TomatoNovelDownloader.exe" ]; then
-            mv "dist/TomatoNovelDownloader.exe" "dist/TomatoNovelDownloader_windows_${{ matrix.arch }}.exe"
-          fi
+          pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
         else
-          if [ -f "dist/TomatoNovelDownloader" ]; then
-            mv "dist/TomatoNovelDownloader" "dist/TomatoNovelDownloader_${{ matrix.platform }}_${{ matrix.arch }}"
-            chmod +x "dist/TomatoNovelDownloader_${{ matrix.platform }}_${{ matrix.arch }}"
-          fi
+          pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
         fi
 
-    - name: List build results
-      shell: bash
+    - name: Rename artifacts
+      run: |
+        out="dist/TomatoNovelDownloader"
+        if [[ "${{ matrix.platform }}" == "windows" ]]; then
+          mv "${out}.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
+        else
+          mv "${out}" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+        fi
+
+    - name: Show built file info
       run: |
         ls -la dist/
+        file dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v4
       with:
         name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
-        path: |
-          dist/TomatoNovelDownloader_*
-        retention-days: 30
+        path: dist/FanqieDownloader_Debug_*
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    
+    if: github.event_name == 'push' && github.ref =~ '^refs/heads/(main|master)$'
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 20
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with: path: artifacts
 
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Organize release files
+    - name: Prepare release
       run: |
-        mkdir -p release_files
-        find artifacts -name "TomatoNovelDownloader_*" -type f -exec cp {} release_files/ \;
-        ls -la release_files/
-
-    - name: Generate version info
-      id: version
-      env:
-        TZ: 'Asia/Shanghai'
-      run: |
-        version="v$(date +'%Y.%m.%d.%H%M')"
+        mkdir release_files
+        cp artifacts/* release_files/
+        version="v$(date -u +'%Y.%m.%d.%H%M')"
         echo "tag=$version" >> $GITHUB_OUTPUT
-        git log --oneline -20 --pretty=format:"- %s" > commits.txt
+        git log -20 --pretty=format:"- %s" > commits.txt
 
-    - name: Create release notes file
-      env:
-        TZ: 'Asia/Shanghai'
+    - name: Draft release notes
       run: |
-        version="${{ steps.version.outputs.tag }}"
-        
-        # 获取各国时间
-        china_time=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S CST')
-        us_eastern_time=$(TZ='America/New_York' date +'%Y-%m-%d %H:%M:%S EST')
-        us_pacific_time=$(TZ='America/Los_Angeles' date +'%Y-%m-%d %H:%M:%S PST')
-        uk_time=$(TZ='Europe/London' date +'%Y-%m-%d %H:%M:%S GMT')
-        france_time=$(TZ='Europe/Paris' date +'%Y-%m-%d %H:%M:%S CET')
-        russia_time=$(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S MSK')
-        
-        commit_content=$(cat commits.txt)
-        
-        cat > release_notes.md << EOF
-        ## Fanqie Novel Downloader $version
-        
-        ### 🌍 发布时间 / Release Time
-        
-        **多国时间 / Countries Time:**
-        - 🇨🇳 **中国 (北京)**: $china_time
-        - 🇺🇸 **美国 (纽约)**: $us_eastern_time
-        - 🇺🇸 **美国 (洛杉矶)**: $us_pacific_time
-        - 🇬🇧 **英国 (伦敦)**: $uk_time
-        - 🇫🇷 **法国 (巴黎)**: $france_time
-        - 🇷🇺 **俄罗斯 (莫斯科)**: $russia_time
-        
-        ### 📝 更新内容 / Updates
-        $commit_content
-        
-        ### 💻 平台支持 / Platform Support
-        
-        此版本支持以下平台和架构：
-        
-        #### Windows
-        - **FanqieDownloader_Debug_windows_x64.exe** - Windows 10/11 (64位) ✅
-        - **FanqieDownloader_Debug_windows_x86.exe** - Windows 7+ (32位) ✅
-        
-        #### Linux
-        - **FanqieDownloader_Debug_linux_x64** - Linux (64位 AMD/Intel) ✅
-        - **FanqieDownloader_Debug_linux_x86** - Linux (32位) ✅
-        - **FanqieDownloader_Debug_linux_arm64** - Linux ARM64 (树莓派4/5, ARM服务器) 🆕
-        - **FanqieDownloader_Debug_linux_armv7** - Linux ARMv7 (树莓派2/3, 32位ARM设备) 🆕
-        
-        #### macOS
-        - **FanqieDownloader_Debug_macos_x64** - macOS Intel (64位) ✅
-        - **FanqieDownloader_Debug_macos_arm64** - macOS Apple Silicon (M1/M2/M3) ✅
-        
-        ### 📖 使用说明 / Usage Instructions
-        
-        #### Windows 用户：
-        1. 根据系统位数下载对应的 .exe 文件
-        2. 双击运行
-        3. 如果不确定系统位数，建议下载 x86 版本（兼容性更好）
-        4. 首次运行可能被杀毒软件拦截，请添加信任
-        
-        #### Linux 用户：
-        1. 下载对应架构的二进制文件
-        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_linux_*\`
-        3. 运行：\`./FanqieDownloader_Debug_linux_*\`
-        4. 查看系统架构：\`uname -m\` (x86_64=x64, i686=x86, aarch64=arm64, armv7l=armv7)
-        
-        #### macOS 用户：
-        1. Intel Mac 选择 x64 版本，Apple Silicon (M系列) 选择 arm64 版本
-        2. 添加执行权限：\`chmod +x FanqieDownloader_Debug_macos_*\`
-        3. 运行：\`./FanqieDownloader_Debug_macos_*\`
-        4. 如被系统阻止，请在系统偏好设置 > 安全性与隐私中允许运行
-        5. 或使用命令：\`xattr -cr FanqieDownloader_Debug_macos_*\` 清除隔离属性
-        
-        #### 树莓派用户：
-        - 树莓派 2/3 (32位系统): 使用 armv7 版本
-        - 树莓派 4/5 (64位系统): 使用 arm64 版本
-        - 查看架构：\`dpkg --print-architecture\`
-        
-        ### ⚠️ 注意事项 / Notes
-        - 控制台窗口会显示详细的下载进度和错误信息
-        - ARM 版本首次支持，如遇问题请反馈
-        - 所有二进制文件都是独立运行的，无需安装 Python
-        - 如遇到问题，请在 Issues 中反馈并说明：
-          - 操作系统版本
-          - 设备架构
-          - 错误信息截图
-        
-        ### 🔧 故障排除 / Troubleshooting
-        
-        **Linux 执行权限问题：**
-        \`\`\`bash
-        chmod +x FanqieDownloader_Debug_linux_*
-        \`\`\`
-        
-        **macOS 安全提示：**
-        \`\`\`bash
-        xattr -cr FanqieDownloader_Debug_macos_*
-        \`\`\`
-        
-        **查看系统架构：**
-        - Windows: \`wmic os get osarchitecture\`
-        - Linux/macOS: \`uname -m\`
-        
-        ---
-        
-        💡 **提示**: 如果不确定下载哪个版本，可以在 Issues 中询问，说明你的设备型号和操作系统。
-        EOF
+        cat > release_notes.md <<EOF
+## Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
 
-    - name: Create Release
+### 🖥️ 支持平台
+- macOS Intel: FanqieDownloader_Debug_macos_x64  
+- macOS Apple Silicon: FanqieDownloader_Debug_macos_arm64  
+- Windows x64/x86, Linux x64/x86/arm64/armv7
+
+### 🔧 更新日志
+$(cat commits.txt)
+EOF
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.version.outputs.tag }}
-        name: Fanqie Novel Downloader ${{ steps.version.outputs.tag }}
+        tag_name: ${{ steps.prepare.outputs.tag }}
+        name: Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
         body_path: release_notes.md
-        files: |
-          release_files/*
-        draft: false
-        prerelease: false
+        files: release_files/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
