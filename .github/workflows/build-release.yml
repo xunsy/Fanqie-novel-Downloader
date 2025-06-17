@@ -15,16 +15,48 @@ jobs:
       matrix:
         include:
           # Windows
-          - os: windows-latest; platform: windows; arch: x64; python-arch: x64; executable_ext: .exe
-          - os: windows-latest; platform: windows; arch: x86; python-arch: x86; executable_ext: .exe
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            python-arch: x64
+            executable_ext: .exe
+          - os: windows-latest
+            platform: windows
+            arch: x86
+            python-arch: x86
+            executable_ext: .exe
           # Linux
-          - os: ubuntu-latest; platform: linux; arch: x64; python-arch: x64; executable_ext: ""
-          - os: ubuntu-latest; platform: linux; arch: x86; python-arch: x64; executable_ext: ""
-          - os: ubuntu-latest; platform: linux; arch: arm64; python-arch: x64; executable_ext: ""
-          - os: ubuntu-latest; platform: linux; arch: armv7; python-arch: x64; executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            python-arch: x64
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86
+            python-arch: x64
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            python-arch: x64
+            executable_ext: ""
+          - os: ubuntu-latest
+            platform: linux
+            arch: armv7
+            python-arch: x64
+            executable_ext: ""
           # macOS
-          - os: macos-latest; platform: macos; arch: x64; python-arch: x64; executable_ext: ""
-          - os: macos-14; platform: macos; arch: arm64; python-arch: arm64; executable_ext: ""
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            python-arch: x64
+            executable_ext: ""
+          - os: macos-14
+            platform: macos
+            arch: arm64
+            python-arch: arm64
+            executable_ext: ""
     runs-on: ${{ matrix.os }}
 
     steps:
