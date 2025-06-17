@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false # <--- 重要：允许其他构建继续，即使一个失败
       matrix:
         include:
           # Windows
@@ -23,7 +24,7 @@ jobs:
           - os: windows-latest
             platform: windows
             arch: x86
-            python-arch: x86
+            python-arch: x86 # 确保这是你想要的32位Python
             executable_ext: .exe
           # Linux
           - os: ubuntu-latest
@@ -34,25 +35,25 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x86
-            python-arch: x64
+            python-arch: x64 # 使用64位Python构建32位目标
             executable_ext: ""
           - os: ubuntu-latest
             platform: linux
             arch: arm64
-            python-arch: x64
+            python-arch: x64 # 使用64位Python交叉编译ARM64
             executable_ext: ""
           - os: ubuntu-latest
             platform: linux
             arch: armv7
-            python-arch: x64
+            python-arch: x64 # 使用64位Python交叉编译ARMv7
             executable_ext: ""
           # macOS
-          - os: macos-latest
+          - os: macos-latest # 通常是 Intel x64
             platform: macos
             arch: x64
             python-arch: x64
             executable_ext: ""
-          - os: macos-14
+          - os: macos-14 # 通常是 Apple Silicon ARM64
             platform: macos
             arch: arm64
             python-arch: arm64
@@ -79,9 +80,11 @@ jobs:
             libffi-dev \
             libssl-dev
 
-      - name: Setup QEMU (ARM builds)
+      - name: Setup QEMU (Linux ARM builds)
         if: ${{ matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7') }}
-        run: sudo apt-get install -y qemu-user-static binfmt-support
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
 
       - name: Install 32-bit toolchain (Linux x86)
         if: ${{ matrix.platform == 'linux' && matrix.arch == 'x86' }}
@@ -94,67 +97,120 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
+          # 添加 -vvv 以获取更详细的pip安装日志
           if [ -f requirements-ci.txt ]; then
-            pip install -r requirements-ci.txt
+            pip install -r requirements-ci.txt -vvv
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt -vvv
           else
-            pip install -r requirements.txt
+            echo "Warning: No requirements.txt or requirements-ci.txt found."
           fi
+        shell: bash # 确保在 Windows 上也能用 [ -f ... ]
 
       - name: Build executable
+        # 重要: 在Windows上使用bash语法时，需要指定 shell: bash
+        shell: bash
         run: |
-          EXTRA_ARGS=""
-          
+          EXTRA_ARGS="" # 如果不需要，可以移除这行
+          PYINSTALLER_CMD="pyinstaller --log-level DEBUG" # 添加详细日志
+
           # macOS specific build
           if [[ "${{ matrix.platform }}" == "macos" ]]; then
             if [[ "${{ matrix.arch }}" == "x64" ]]; then
               echo "▄▄▄ Building macOS x64 (Intel) ▄▄▄"
-              arch -x86_64 pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+              arch -x86_64 $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
             else
               echo "▄▄▄ Building macOS arm64 (Apple Silicon) ▄▄▄"
-              pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+              $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
             fi
-          
+
           # Linux specific build
           elif [[ "${{ matrix.platform }}" == "linux" ]]; then
             case "${{ matrix.arch }}" in
               arm64)
+                echo "▄▄▄ Building Linux arm64 ▄▄▄"
                 export PYINSTALLER_COMPILE_BOOTLOADER=1
                 export CC=aarch64-linux-gnu-gcc
                 export CXX=aarch64-linux-gnu-g++
+                # 可能需要为交叉编译安装目标架构的Python头文件和库
+                # sudo apt-get install -y python3-dev-arm64 libssl-dev:arm64 libffi-dev:arm64
                 ;;
               armv7)
+                echo "▄▄▄ Building Linux armv7 ▄▄▄"
                 export PYINSTALLER_COMPILE_BOOTLOADER=1
                 export CC=arm-linux-gnueabihf-gcc
                 export CXX=arm-linux-gnueabihf-g++
+                # 可能需要为交叉编译安装目标架构的Python头文件和库
+                # sudo apt-get install -y python3-dev-armhf libssl-dev:armhf libffi-dev:armhf
                 ;;
               x86)
+                echo "▄▄▄ Building Linux x86 ▄▄▄"
                 export CFLAGS="-m32"
                 export LDFLAGS="-m32"
+                # 如果Python是64位的，PyInstaller可能仍需要32位Python开发文件
+                # sudo apt-get install -y python3-dev:i386 libssl-dev:i386 libffi-dev:i386
+                ;;
+              *)
+                echo "▄▄▄ Building Linux ${{ matrix.arch }} ▄▄▄"
                 ;;
             esac
-            pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
-          
+            $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
+
           # Windows and others
           else
-            pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+            echo "▄▄▄ Building ${{ matrix.platform }} ${{ matrix.arch }} ▄▄▄"
+            $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
           fi
 
       - name: Rename artifacts
+        # 重要: 在Windows上使用bash语法时，需要指定 shell: bash
+        shell: bash
         run: |
-          SOURCE_PATH="dist/TomatoNovelDownloader"
+          SOURCE_PATH="dist/TomatoNovelDownloader" # 确保这个路径和你的 .spec 文件输出一致
           DEST_PREFIX="FanqieDownloader_Debug"
-          
-          if [[ "${{ matrix.platform }}" == "windows" ]]; then
-            mv "${SOURCE_PATH}.exe" "dist/${DEST_PREFIX}_windows_${{ matrix.arch }}.exe"
-          else
-            mv "${SOURCE_PATH}" "dist/${DEST_PREFIX}_${{ matrix.platform }}_${{ matrix.arch }}"
-            chmod +x "dist/${DEST_PREFIX}_${{ matrix.platform }}_${{ matrix.arch }}"
+
+          if [[ ! -d "dist" ]]; then
+            echo "Error: dist directory not found. PyInstaller build might have failed."
+            exit 1
           fi
 
-      - name: Verify binary
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            if [[ -f "${SOURCE_PATH}.exe" ]]; then
+              mv "${SOURCE_PATH}.exe" "dist/${DEST_PREFIX}_windows_${{ matrix.arch }}.exe"
+            else
+              echo "Error: Expected executable ${SOURCE_PATH}.exe not found in dist/ for Windows."
+              ls -R dist/ # 列出dist目录内容帮助调试
+              exit 1
+            fi
+          else
+            if [[ -f "${SOURCE_PATH}" ]]; then
+              mv "${SOURCE_PATH}" "dist/${DEST_PREFIX}_${{ matrix.platform }}_${{ matrix.arch }}"
+              chmod +x "dist/${DEST_PREFIX}_${{ matrix.platform }}_${{ matrix.arch }}"
+            else
+              echo "Error: Expected executable ${SOURCE_PATH} not found in dist/ for ${{ matrix.platform }}."
+              ls -R dist/ # 列出dist目录内容帮助调试
+              exit 1
+            fi
+          fi
+
+      - name: Verify binary and list dist
+        # 重要: 在Windows上使用bash语法时，需要指定 shell: bash
+        shell: bash
         run: |
-          ls -lh dist/
-          file "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          echo "--- Listing dist directory ---"
+          ls -lhR dist/
+          echo "--- Verifying binary (if not Windows) ---"
+          if [[ "${{ matrix.platform }}" != "windows" ]]; then
+            file "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          else
+            echo "Skipping 'file' command on Windows. Checking existence:"
+            if [[ -f "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe" ]]; then
+              echo "Windows executable exists."
+            else
+              echo "Windows executable NOT found!"
+              exit 1 # Or handle as a warning
+            fi
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -162,47 +218,62 @@ jobs:
           name: fanqie-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}*
-            !*.dmg  # 排除不必要的文件
+            !dist/*.dmg  # 排除不必要的文件 (确保路径正确)
 
   release:
     needs: [build]
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
+    # 仅在主分支推送时运行，并且所有build job都成功 (needs隐式处理成功)
+    if: ${{ success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取所有历史记录以便生成完整的changelog
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: fanqie-*
+          # pattern: fanqie-* # 默认下载所有，可以不指定pattern
+          # merge-multiple: true # 如果v4支持，可以将所有artifact内容合并到一个目录，简化后续操作
 
       - name: Prepare release assets
         id: prepare
         run: |
           # 创建干净的发布目录
           mkdir -p release_files
-          
+
           # 整理所有平台的可执行文件
-          find artifacts/ -name "FanqieDownloader*" -exec cp {} release_files/ \;
-          
-          # 生成版本号（格式：v年.月.日.分钟）
+          # download-artifact@v4 会将每个 artifact 放到以其 name 命名的子目录中
+          echo "Looking for artifacts in ./artifacts..."
+          find artifacts/ -type f -name "FanqieDownloader_Debug_*" -print -exec cp {} release_files/ \;
+
+          if [ -z "$(ls -A release_files)" ]; then
+            echo "No artifacts found in release_files. Listing downloaded artifacts:"
+            ls -R artifacts/
+            exit 1
+          fi
+          echo "Files in release_files:"
+          ls -l release_files/
+
+          # 生成版本号（格式：v年.月.日.时分）
           RELEASE_TAG="v$(date -u +'%Y.%m.%d.%H%M')"
           echo "Generated release tag: $RELEASE_TAG"
-          
+
           # 写入GitHub Actions变量
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          
+
           # 生成更新日志（最近20条提交）
-          git log -20 --date=short --pretty=format:"- %ad %h: %s" > release_files/changelog.txt
+          git log -20 --date=format:'%Y-%m-%d' --pretty=format:"- %ad (%h): %s" > release_files/changelog.txt
+        shell: bash
 
       - name: Generate release notes
         run: |
           cat << EOF > release_notes.md
           # 🍅 Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
-          
+
           ### 🔧 支持平台
           - **macOS**
             - Intel 64-bit: \`FanqieDownloader_Debug_macos_x64\`
@@ -211,11 +282,15 @@ jobs:
             - 64-bit: \`FanqieDownloader_Debug_windows_x64.exe\`
             - 32-bit: \`FanqieDownloader_Debug_windows_x86.exe\`
           - **Linux**
-            - 主流架构: x64/x86/arm64/armv7
-          
+            - x64: \`FanqieDownloader_Debug_linux_x64\`
+            - x86: \`FanqieDownloader_Debug_linux_x86\`
+            - arm64: \`FanqieDownloader_Debug_linux_arm64\`
+            - armv7: \`FanqieDownloader_Debug_linux_armv7\`
+
           ### 📄 更新日志
           $(cat release_files/changelog.txt)
           EOF
+        shell: bash
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
