@@ -57,116 +57,117 @@ jobs:
             arch: arm64
             python-arch: arm64
             executable_ext: ""
+
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
-        architecture: ${{ matrix['python-arch'] }}
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          architecture: ${{ matrix['python-arch'] }}
 
-    - name: Install system dependencies (Linux)
-      if: matrix.platform == 'linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-tk python3-dev libffi-dev libssl-dev
+      - name: Install system dependencies (Linux)
+        if: ${{ matrix.platform == 'linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk python3-dev libffi-dev libssl-dev
 
-    - name: Install QEMU support (Linux ARM)
-      if: matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7')
-      run: sudo apt-get install -y qemu-user-static binfmt-support
+      - name: Install QEMU support (Linux ARM)
+        if: ${{ matrix.platform == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'armv7') }}
+        run: sudo apt-get install -y qemu-user-static binfmt-support
 
-    - name: Install 32-bit build tools (Linux i386)
-      if: matrix.platform == 'linux' && matrix.arch == 'x86'
-      run: |
-        sudo dpkg --add-architecture i386
-        sudo apt-get update
-        sudo apt-get install -y gcc-multilib g++-multilib
+      - name: Install 32-bit build tools (Linux i386)
+        if: ${{ matrix.platform == 'linux' && matrix.arch == 'x86' }}
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
 
-    - name: Install dependencies
-      run: |
-        pip install --upgrade pip
-        pip install pyinstaller
-        if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; else pip install -r requirements.txt; fi
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller
+          if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; else pip install -r requirements.txt; fi
 
-    - name: Build executable
-      run: |
-        EXTRA_ARGS=""
-        # macOS：区分 Intel 和 Apple Silicon
-        if [[ "${{ matrix.platform }}" == "macos" ]]; then
-          if [[ "${{ matrix.arch }}" == "x64" ]]; then
-            # 强制通过 Rosetta 在 Intel 模式下运行
-            echo "Building macOS x64 (Intel)…"
-            arch -x86_64 pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+      - name: Build executable
+        run: |
+          EXTRA_ARGS=""
+          if [[ "${{ matrix.platform }}" == "macos" ]]; then
+            if [[ "${{ matrix.arch }}" == "x64" ]]; then
+              echo "Building macOS x64 (Intel)…"
+              arch -x86_64 pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+            else
+              echo "Building macOS arm64 (Apple Silicon)…"
+              pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
+            fi
+          elif [[ "${{ matrix.platform }}" == "linux" ]]; then
+            case "${{ matrix.arch }}" in
+              arm64)
+                export PYINSTALLER_COMPILE_BOOTLOADER=1
+                export CC=aarch64-linux-gnu-gcc
+                export CXX=aarch64-linux-gnu-g++
+                ;;
+              armv7)
+                export PYINSTALLER_COMPILE_BOOTLOADER=1
+                export CC=arm-linux-gnueabihf-gcc
+                export CXX=arm-linux-gnueabihf-g++
+                ;;
+              x86)
+                export CFLAGS="-m32"
+                export LDFLAGS="-m32"
+                ;;
+            esac
+            pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
           else
-            echo "Building macOS arm64 (Apple Silicon)…"
             pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
           fi
-        elif [[ "${{ matrix.platform }}" == "linux" ]]; then
-          case "${{ matrix.arch }}" in
-            arm64)
-              export PYINSTALLER_COMPILE_BOOTLOADER=1
-              export CC=aarch64-linux-gnu-gcc
-              export CXX=aarch64-linux-gnu-g++
-              ;;
-            armv7)
-              export PYINSTALLER_COMPILE_BOOTLOADER=1
-              export CC=arm-linux-gnueabihf-gcc
-              export CXX=arm-linux-gnueabihf-g++
-              ;;
-            x86)
-              export CFLAGS="-m32"
-              export LDFLAGS="-m32"
-              ;;
-          esac
-          pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
-        else
-          pyinstaller build_gui.spec --clean --noconfirm $EXTRA_ARGS
-        fi
 
-    - name: Rename artifacts
-      run: |
-        out="dist/TomatoNovelDownloader"
-        if [[ "${{ matrix.platform }}" == "windows" ]]; then
-          mv "${out}.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
-        else
-          mv "${out}" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
-          chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
-        fi
+      - name: Rename artifacts
+        run: |
+          out="dist/TomatoNovelDownloader"
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            mv "${out}.exe" "dist/FanqieDownloader_Debug_windows_${{ matrix.arch }}.exe"
+          else
+            mv "${out}" "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+            chmod +x "dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}"
+          fi
 
-    - name: Show built file info
-      run: |
-        ls -la dist/
-        file dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}
+      - name: Show built file info
+        run: |
+          ls -la dist/
+          file dist/FanqieDownloader_Debug_${{ matrix.platform }}_${{ matrix.arch }}
 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
-        path: dist/FanqieDownloader_Debug_*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fanqie-downloader-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/FanqieDownloader_Debug_*
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/download-artifact@v4
-      with: path: artifacts
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Prepare release
-      run: |
-        mkdir release_files
-        cp artifacts/* release_files/
-        version="v$(date -u +'%Y.%m.%d.%H%M')"
-        echo "tag=$version" >> $GITHUB_OUTPUT
-        git log -20 --pretty=format:"- %s" > commits.txt
+      - name: Prepare release
+        id: prepare
+        run: |
+          mkdir release_files
+          cp artifacts/* release_files/
+          version="v$(date -u +'%Y.%m.%d.%H%M')"
+          echo "tag=$version" >> $GITHUB_OUTPUT
+          git log -20 --pretty=format:"- %s" > commits.txt
 
-    - name: Draft release notes
-      run: |
-        cat > release_notes.md <<EOF
+      - name: Draft release notes
+        run: |
+          cat > release_notes.md <<EOF
 ## Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
 
 ### 🖥️ 支持平台
@@ -178,12 +179,12 @@ jobs:
 $(cat commits.txt)
 EOF
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.prepare.outputs.tag }}
-        name: Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
-        body_path: release_notes.md
-        files: release_files/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.prepare.outputs.tag }}
+          name: Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
+          body_path: release_notes.md
+          files: release_files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
