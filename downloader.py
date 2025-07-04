@@ -143,7 +143,7 @@ CONFIG = {
     "status_file": "chapter.json",
     "request_rate_limit": 0.4,
     "auth_token": "wcnmd91jb",
-    "server_url": "http://74.113.96.176:5001/api/sources",
+    "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
     "api_endpoints": [],
     "batch_config": {
         "name": "qyuing",
@@ -152,7 +152,7 @@ CONFIG = {
         "token": None,
         "max_batch_size": 290,
         "timeout": 10,
-        "enabled": False
+        "enabled": True
     }
 }
 
