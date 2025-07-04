@@ -1217,7 +1217,9 @@ class NovelDownloaderGUI(ctk.CTk):
         self.log_text.grid(row=1, column=0, padx=15, pady=(0, 15), sticky="nsew")
         self.log_text.configure(state="disabled")
 
-        def _check_update(self):
+
+
+    def _check_update(self):
         """检查 GitHub 更新并提示用户"""
         try:
             from updater import check_update
