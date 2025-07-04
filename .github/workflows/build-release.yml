@@ -124,15 +124,16 @@ jobs:
         run: |
           EXTRA_ARGS="" # 如果不需要，可以移除这行
           PYINSTALLER_CMD="pyinstaller --log-level DEBUG" # 添加详细日志
+          SPEC_FILE=build_gui.spec  # 使用带控制台窗口的GUI spec
 
           # macOS specific build
           if [[ "${{ matrix.platform }}" == "macos" ]]; then
             if [[ "${{ matrix.arch }}" == "x64" ]]; then
               echo "▄▄▄ Building macOS x64 (Intel) ▄▄▄"
-              arch -x86_64 $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
+              arch -x86_64 $PYINSTALLER_CMD $SPEC_FILE --clean --noconfirm $EXTRA_ARGS
             else
               echo "▄▄▄ Building macOS arm64 (Apple Silicon) ▄▄▄"
-              $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
+              $PYINSTALLER_CMD $SPEC_FILE --clean --noconfirm $EXTRA_ARGS
             fi
 
           # Linux specific build
@@ -165,12 +166,12 @@ jobs:
                 echo "▄▄▄ Building Linux ${{ matrix.arch }} ▄▄▄"
                 ;;
             esac
-            $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
+            $PYINSTALLER_CMD $SPEC_FILE --clean --noconfirm $EXTRA_ARGS
 
           # Windows and others
           else
             echo "▄▄▄ Building ${{ matrix.platform }} ${{ matrix.arch }} ▄▄▄"
-            $PYINSTALLER_CMD build_gui.spec --clean --noconfirm $EXTRA_ARGS
+            $PYINSTALLER_CMD $SPEC_FILE --clean --noconfirm $EXTRA_ARGS
           fi
 
       - name: Rename artifacts
