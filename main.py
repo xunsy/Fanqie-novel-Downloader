@@ -14,7 +14,19 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# 启动日志
 logging.info("番茄小说下载器启动")
+
+# 启动时检查更新
+try:
+    from updater import check_update
+    update_msg = check_update()
+    if update_msg:
+        print(update_msg)
+        logging.info(update_msg)
+except Exception as _e:
+    # 更新检查失败不影响主流程
+    logging.debug(f"更新检查失败: {_e}")
 logging.info(f"Python版本: {sys.version}")
 logging.info(f"运行路径: {os.getcwd()}")
 logging.info(f"日志文件: {log_file}")

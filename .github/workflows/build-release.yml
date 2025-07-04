@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   build:
+    outputs:
+      build_ver: ${{ steps.genver.outputs.build_ver }}
     strategy:
       fail-fast: false # <--- 重要：允许其他构建继续，即使一个失败
       matrix:
@@ -63,6 +65,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Generate build version
+        id: genver
+        shell: bash
+        run: |
+          BUILD_VER="$(date -u +'%Y.%m.%d.%H%M')"
+          echo "build_ver=$BUILD_VER" >> $GITHUB_OUTPUT
+          echo "__version__ = \"$BUILD_VER\"" > version.py
+          echo "BUILD_VER=$BUILD_VER" >> $GITHUB_ENV
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -223,6 +234,8 @@ jobs:
   release:
     needs: [build]
     runs-on: ubuntu-latest
+    env:
+      BUILD_VER: ${{ needs.build.outputs.build_ver }}
     # 仅在主分支推送时运行，并且所有build job都成功 (needs隐式处理成功)
     if: ${{ success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
@@ -258,8 +271,8 @@ jobs:
           echo "Files in release_files:"
           ls -l release_files/
 
-          # 生成版本号（格式：v年.月.日.时分）
-          RELEASE_TAG="v$(date -u +'%Y.%m.%d.%H%M')"
+          # 使用构建阶段生成的版本号
+          RELEASE_TAG="v${BUILD_VER}"
           echo "Generated release tag: $RELEASE_TAG"
 
           # 写入GitHub Actions变量

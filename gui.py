@@ -78,6 +78,9 @@ class NovelDownloaderGUI(ctk.CTk):
 
         self._setup_ui()
 
+        # 检查更新
+        self.after(200, self._check_update)
+
         # 在UI设置完成后再应用响应式设置
         self.after(100, self._apply_initial_responsive_settings)
 
@@ -1213,6 +1216,20 @@ class NovelDownloaderGUI(ctk.CTk):
         )
         self.log_text.grid(row=1, column=0, padx=15, pady=(0, 15), sticky="nsew")
         self.log_text.configure(state="disabled")
+
+        def _check_update(self):
+        """检查 GitHub 更新并提示用户"""
+        try:
+            from updater import check_update
+            msg = check_update()
+            if msg:
+                # 使用 GUI 日志显示
+                self.log(msg, level="system")
+                # 也可弹窗提示
+                messagebox.showinfo("更新提示", msg, parent=self)
+        except Exception as _e:
+            # 静默失败
+            print(f"GUI 更新检查失败: {_e}")
 
     def _setup_bottom_frame(self):
         """设置底部状态栏（仅包含版本信息）"""
