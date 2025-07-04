@@ -13,7 +13,7 @@ customtkinter_datas = collect_data_files('customtkinter')
 # 分析主程序
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=customtkinter_datas,
     hiddenimports=[
