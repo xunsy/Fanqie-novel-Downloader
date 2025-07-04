@@ -1,19 +1,27 @@
-# 🍅 番茄小说下载器 v1.7
+# 🍅 番茄小说下载器 v1.7.0
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.8+-3776ab?style=for-the-badge&logo=python&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
-
-**一个功能强大、界面美观的番茄小说下载工具**
-
-*支持现代化GUI界面和命令行操作，提供多种下载方式和格式输出*
-
-[快速开始](#-快速开始) • [功能特点](#-功能特点) • [使用指南](#-使用指南) • [配置说明](#-配置说明) • [贡献指南](#-贡献指南)
+[![Release](https://img.shields.io/github/v/release/POf-L/Fanqie-novel-Downloader?style=for-the-badge&logo=github)](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
+![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776ab?style=for-the-badge&logo=python&logoColor=white)
+![License MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+![Platform Windows|macOS|Linux](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge)
+![Status Active](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
 
 </div>
+
+> **番茄小说下载器** 是一款简单易用的小说下载工具，提供现代化GUI界面和命令行模式，支持批量下载、Tor代理、Cloudflare反代、多线程及多种输出格式，让你轻松下载并阅读网络小说。
+
+---
+
+## 📑 目录
+
+- [🌟 功能特点](#功能特点)
+- [🚀 快速开始](#快速开始)
+- [📖 使用指南](#使用指南)
+- [⚙️ 配置说明](#配置说明)
+- [🤝 贡献指南](#贡献指南)
+- [📄 License](#license)
 
 ---
 
