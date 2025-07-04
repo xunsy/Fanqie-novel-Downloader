@@ -15,7 +15,14 @@ a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=customtkinter_datas,
+    datas=customtkinter_datas + [
+        ('gui.py', '.'),
+        ('utils.py', '.'),
+        ('config.py', '.'),
+        ('downloader.py', '.'),
+        ('updater.py', '.'),
+        ('version.py', '.')
+    ],
     hiddenimports=[
         'platformdirs',  # 确保包含此库
         'customtkinter',
