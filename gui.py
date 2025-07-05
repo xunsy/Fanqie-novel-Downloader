@@ -1497,7 +1497,8 @@ class NovelDownloaderGUI(ctk.CTk):
         status_text = f"下载进度: {percent_int}%"
         if percent_int == 100:
             pass
-        self.update_progress(float(percent_int), status_text)
+        # 将进度更新调度到主线程，确保线程安全
+        self.after(0, self.update_progress, float(percent_int), status_text)
 
     def _on_fq_download_complete(self):
         """下载完成回调"""
