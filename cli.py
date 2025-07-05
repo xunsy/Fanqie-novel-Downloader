@@ -4,11 +4,7 @@
 提供无GUI的命令行下载功能
 """
 
-from downloader import (
-    enable_tor_support,
-    fetch_api_endpoints_from_server,
-    Run
-)
+from downloader import fetch_api_endpoints_from_server, Run
 import os
 
 
@@ -18,11 +14,7 @@ def main():
     print("番茄小说下载器 - 命令行版本")
     print("=" * 40)
 
-    # 询问是否启用Tor
-    use_tor = input("是否启用Tor代理? (y/N): ").strip().lower()
-    if use_tor in ['y', 'yes']:
-        if not enable_tor_support():
-            print("将不使用Tor网络继续运行")
+
 
     print("正在从服务器获取API列表...")
     fetch_api_endpoints_from_server()

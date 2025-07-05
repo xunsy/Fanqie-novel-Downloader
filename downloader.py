@@ -14,9 +14,7 @@ import urllib3
 import threading
 import signal
 import sys
-import stem
-from stem import Signal
-from stem.control import Controller
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from collections import OrderedDict
@@ -33,93 +31,25 @@ from urllib.parse import urlencode
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
 
-# 添加Tor配置
-TOR_CONFIG = {
-    "enabled": False,
-    "proxy_port": 9050,
-    "max_retries": 3,
-    "change_ip_after": 980,
-    "request_timeout": 35
-}
 
-# 初始化请求计数器
-request_counter = 0
 
-def get_tor_session():
-    """创建新的Tor会话"""
-    session = requests.session()
-    session.proxies = {
-        'http': f'socks5h://127.0.0.1:{TOR_CONFIG["proxy_port"]}',
-        'https': f'socks5h://127.0.0.1:{TOR_CONFIG["proxy_port"]}'
-    }
-    return session
-
-def renew_tor_ip():
-    """重建会话"""
-    if not TOR_CONFIG["enabled"]:
-        return
-
-    print("正在重建Tor会话更换IP...")
-    global request_counter
-    request_counter = 0
-    time.sleep(5)
-    print("IP更换完成")
-
-def check_tor_connection():
-    """检查Tor连接是否正常"""
-    try:
-        session = get_tor_session()
-        response = session.get(
-            "https://check.torproject.org/",
-            timeout=TOR_CONFIG["request_timeout"]
-        )
-        if "Congratulations" in response.text:
-            print("Tor连接成功!")
-            return True
-    except Exception as e:
-        print(f"Tor连接检查失败: {str(e)}")
-    return False
-
-def enable_tor_support():
-    """启用Tor支持"""
-    TOR_CONFIG["enabled"] = True
-    print("正在启用Tor支持...")
-    if check_tor_connection():
-        print("Tor支持已启用!")
-        return True
-    else:
-        print("无法连接到Tor网络，请确保Tor服务正在运行，将使用其他下载渠道进行下载\n")
-        TOR_CONFIG["enabled"] = False
-        return False
-
-def make_request(url, headers=None, params=None, data=None, method='GET', verify=False, use_tor=False, timeout=None):
+def make_request(url, headers=None, params=None, data=None, method='GET', verify=False, timeout=None):
     """通用的请求函数"""
-    global request_counter
-
     if headers is None:
         headers = get_headers()
-
-    session = None
-    if use_tor and TOR_CONFIG["enabled"]:
-        session = get_tor_session()
-        # 计数器逻辑
-        request_counter += 1
-        if request_counter % TOR_CONFIG["change_ip_after"] == 0:
-            renew_tor_ip()
-    else:
-        session = requests.Session()
 
     try:
         request_params = {
             'headers': headers,
             'params': params,
             'verify': verify,
-            'timeout': timeout if timeout is not None else TOR_CONFIG["request_timeout"]
+            'timeout': timeout if timeout is not None else CONFIG["request_timeout"]
         }
 
         if data:
             request_params['data'] = data
 
+        session = requests.Session()
         if method.upper() == 'GET':
             response = session.get(url, **request_params)
         elif method.upper() == 'POST':
@@ -130,9 +60,6 @@ def make_request(url, headers=None, params=None, data=None, method='GET', verify
         return response
     except Exception as e:
         print(f"请求失败: {str(e)}")
-        if use_tor and TOR_CONFIG["enabled"]:
-            renew_tor_ip()
-            return make_request(url, headers, params, data, method, verify, use_tor, timeout)
         raise
 
 # 全局配置
@@ -158,27 +85,13 @@ CONFIG = {
 
 def get_headers() -> Dict[str, str]:
     """生成随机请求头"""
-    # 预定义的用户代理列表，避免依赖fake_useragent的网络请求
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-    ]
+    browsers = ['chrome', 'edge']
+    browser = random.choice(browsers)
 
-    try:
-        # 尝试使用fake_useragent
-        browsers = ['chrome', 'edge']
-        browser = random.choice(browsers)
-
-        if browser == 'chrome':
-            user_agent = UserAgent().chrome
-        else:
-            user_agent = UserAgent().edge
-    except Exception:
-        # 如果fake_useragent失败，使用预定义的用户代理
-        user_agent = random.choice(user_agents)
+    if browser == 'chrome':
+        user_agent = UserAgent().chrome
+    else:
+        user_agent = UserAgent().edge
 
     return {
         "User-Agent": user_agent,
@@ -285,8 +198,7 @@ def batch_download_chapters(item_ids, headers):
             method='POST',
             data=json.dumps(payload),
             timeout=batch_config["timeout"],
-            verify=False,
-            use_tor=True
+            verify=False
         )
 
         if response.status_code == 200:
@@ -355,8 +267,7 @@ def down_text(chapter_id, headers, book_id=None):
                 current_endpoint,
                 headers=headers.copy(),
                 timeout=CONFIG["request_timeout"],
-                verify=False,
-                use_tor=True
+                verify=False
             )
 
             response_time = time.time() - start_time
@@ -882,7 +793,7 @@ class GUIdownloader:
 def main():
     print("""欢迎使用番茄小说下载器精简版！
 开发者：Dlmily
-当前版本：v1.7
+当前版本：v1.7.3
 Github：https://github.com/Dlmily/Tomato-Novel-Downloader-Lite
 赞助/了解新产品：https://afdian.com/a/dlbaokanluntanos
 *使用前须知*：
@@ -891,11 +802,6 @@ Github：https://github.com/Dlmily/Tomato-Novel-Downloader-Lite
 
 另：如果有带番茄svip的cookie或api，按照您的意愿投到"Issues"页中。
 ------------------------------------------""")
-    use_tor = input("是否要使用Tor网络进行下载？(y/n, 默认为n): ").strip().lower()
-    if use_tor == 'y':
-        if not enable_tor_support():
-            print("将不使用Tor网络继续运行")
-
     print("正在从服务器获取API列表...")
     fetch_api_endpoints_from_server()
 
