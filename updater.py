@@ -14,7 +14,7 @@ REPO_OWNER = "POf-L"
 REPO_NAME = "Fanqie-novel-Downloader"
 API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 
-def get_latest_version() -> Tuple[str, str]:
+def get_latest_version() -> Tuple[str, str, str]:
     """获取 GitHub 上的最新 Release 版本号和下载地址
 
     Returns
@@ -28,7 +28,8 @@ def get_latest_version() -> Tuple[str, str]:
     data = response.json()
     tag = data.get("tag_name", "")
     html_url = data.get("html_url", data.get("assets", [{}])[0].get("browser_download_url", ""))
-    return tag, html_url
+    body = data.get("body", "")
+    return tag, html_url, body
 
 def is_newer(remote_tag: str, local_ver: str = __version__) -> bool:
     """比较版本号，判断远程版本是否更新
@@ -45,9 +46,9 @@ def is_newer(remote_tag: str, local_ver: str = __version__) -> bool:
 def check_update() -> Optional[str]:
     """检查是否有更新，返回更新地址或 None"""
     try:
-        remote_tag, url = get_latest_version()
+        remote_tag, url, body = get_latest_version()
         if remote_tag and is_newer(remote_tag):
-            return f"检测到新版本 {remote_tag}，请前往 {url} 下载更新。"
+            return f"检测到新版本 {remote_tag}。\n\n更新内容:\n{body}\n\n请前往 {url} 下载更新。"
     except Exception as e:
         # 记录错误但不影响主流程
         print(f"检查更新失败: {e}")
