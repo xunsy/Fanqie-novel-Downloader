@@ -27,7 +27,7 @@ from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
 import base64
 import gzip
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 # 禁用SSL证书验证警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -187,6 +187,234 @@ def get_headers() -> Dict[str, str]:
         "Referer": "https://fanqienovel.com/",
         "X-Requested-With": "XMLHttpRequest",
     }
+
+def search_novels(query: str, page: int = 0, limit: int = 20) -> Optional[Dict]:
+    """
+    搜索番茄小说
+    
+    Args:
+        query: 搜索关键词
+        page: 页码，从0开始
+        limit: 每页数量限制
+        
+    Returns:
+        搜索结果字典，包含书籍列表等信息
+    """
+    try:
+        url = "https://fq.66ds.de/api/search"
+        
+        params = {
+            'query': query,
+            'offset': page * limit,
+            'limit': limit,
+            'page': page,
+            'aid': 1967,
+            'isLoadMore': False
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Referer': f'https://fq.66ds.de/search/index.html?q={quote(query)}',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        return response.json()
+        
+    except Exception as e:
+        print(f"搜索小说时出错: {str(e)}")
+        return None
+
+def format_search_results(search_data: Dict) -> str:
+    """
+    格式化搜索结果为可读文本
+    
+    Args:
+        search_data: 搜索API返回的数据
+        
+    Returns:
+        格式化后的搜索结果文本
+    """
+    if not search_data or search_data.get('code') != 0:
+        return "搜索失败，请检查网络连接或稍后再试"
+    
+    book_data = search_data.get('data', {}).get('book_data', [])
+    if not book_data:
+        return "未找到相关小说"
+    
+    result = f"找到 {len(book_data)} 本相关小说：\n\n"
+    
+    for i, book in enumerate(book_data, 1):
+        book_id = book.get('book_id', '')
+        book_name = book.get('book_name', '未知')
+        author = book.get('author', '未知作者')
+        read_count = book.get('read_count', '0')
+        creation_status = "完结" if book.get('creation_status') == "1" else "连载中"
+        abstract = book.get('abstract', '无简介')[:100] + ('...' if len(book.get('abstract', '')) > 100 else '')
+        
+        # 获取分类标签
+        categories = []
+        for tag in book.get('category_tags', []):
+            categories.append(tag.get('category_name', ''))
+        category_text = ' | '.join(categories) if categories else '无分类'
+        
+        result += f"{i}. 《{book_name}》\n"
+        result += f"   作者: {author}\n"
+        result += f"   ID: {book_id}\n"
+        result += f"   状态: {creation_status}\n"
+        result += f"   阅读量: {read_count}\n"
+        result += f"   分类: {category_text}\n"
+        result += f"   简介: {abstract}\n"
+        result += f"   {'='*50}\n\n"
+    
+    return result
+
+def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
+    """
+    通过多个来源获取增强的书籍信息，优先使用最完整的数据
+    
+    Args:
+        book_id: 书籍ID
+        
+    Returns:
+        包含详细信息的字典
+    """
+    try:
+        # 初始化结果字典
+        enhanced_info = {
+            'book_id': book_id,
+            'book_name': None,
+            'author': None,
+            'description': None,
+            'thumb_url': None,
+            'read_count': None,
+            'creation_status': None,
+            'category_tags': [],
+            'genre': None,
+            'book_type': None
+        }
+        
+        # 1. 先通过现有的get_book_info获取基本信息
+        try:
+            headers = get_headers()
+            basic_name, basic_author, basic_description = get_book_info(book_id, headers)
+            
+            # 使用基本信息作为基础
+            if basic_name:
+                enhanced_info['book_name'] = basic_name
+            if basic_author:
+                enhanced_info['author'] = basic_author
+            if basic_description:
+                enhanced_info['description'] = basic_description
+                
+        except Exception as e:
+            print(f"获取基本书籍信息失败: {str(e)}")
+        
+        # 2. 通过搜索API获取详细信息
+        search_info = None
+        if enhanced_info['book_name']:
+            # 如果有书名，用书名搜索
+            search_result = search_novels(enhanced_info['book_name'], limit=5)
+            if search_result and search_result.get('code') == 0:
+                book_data = search_result.get('data', {}).get('book_data', [])
+                
+                # 查找匹配的书籍（优先通过ID匹配，其次通过书名）
+                for book in book_data:
+                    if book.get('book_id') == book_id:
+                        search_info = book
+                        break
+                    elif book.get('book_name') == enhanced_info['book_name']:
+                        search_info = book
+                        break
+        
+        # 3. 如果通过书名没找到，尝试通过作者搜索
+        if not search_info and enhanced_info['author']:
+            try:
+                search_result = search_novels(enhanced_info['author'], limit=10)
+                if search_result and search_result.get('code') == 0:
+                    book_data = search_result.get('data', {}).get('book_data', [])
+                    
+                    # 查找匹配的书籍
+                    for book in book_data:
+                        if book.get('book_id') == book_id:
+                            search_info = book
+                            break
+                        elif (book.get('book_name') == enhanced_info['book_name'] and 
+                              book.get('author') == enhanced_info['author']):
+                            search_info = book
+                            break
+            except Exception as e:
+                print(f"通过作者搜索失败: {str(e)}")
+        
+        # 4. 智能合并信息：每个字段单独判断使用哪个来源的数据
+        if search_info:
+            # 书名：优先使用搜索结果（通常更准确）
+            if search_info.get('book_name') and search_info['book_name'].strip():
+                enhanced_info['book_name'] = search_info['book_name']
+            
+            # 作者：优先使用搜索结果
+            if search_info.get('author') and search_info['author'].strip():
+                enhanced_info['author'] = search_info['author']
+            
+            # 简介：使用更长更详细的版本
+            search_desc = search_info.get('abstract', '')
+            if search_desc and search_desc.strip():
+                if not enhanced_info['description'] or len(search_desc) > len(enhanced_info['description']):
+                    enhanced_info['description'] = search_desc
+            
+            # 以下信息只有搜索API提供，直接使用
+            if search_info.get('thumb_url'):
+                enhanced_info['thumb_url'] = search_info['thumb_url']
+            
+            if search_info.get('read_count'):
+                enhanced_info['read_count'] = search_info['read_count']
+            
+            if search_info.get('creation_status') is not None:
+                enhanced_info['creation_status'] = search_info['creation_status']
+            
+            if search_info.get('category_tags'):
+                enhanced_info['category_tags'] = search_info['category_tags']
+            
+            if search_info.get('genre') is not None:
+                enhanced_info['genre'] = search_info['genre']
+            
+            if search_info.get('book_type') is not None:
+                enhanced_info['book_type'] = search_info['book_type']
+        
+        # 5. 最终数据验证和清理
+        # 确保基本信息不为空
+        if not enhanced_info['book_name'] or enhanced_info['book_name'].strip() == '':
+            enhanced_info['book_name'] = f"未知小说_{book_id}"
+        
+        if not enhanced_info['author'] or enhanced_info['author'].strip() == '':
+            enhanced_info['author'] = "未知作者"
+        
+        if not enhanced_info['description'] or enhanced_info['description'].strip() == '':
+            enhanced_info['description'] = "暂无简介"
+        
+        # 验证分类标签格式
+        if enhanced_info['category_tags'] and not isinstance(enhanced_info['category_tags'], list):
+            enhanced_info['category_tags'] = []
+        
+        return enhanced_info
+        
+    except Exception as e:
+        print(f"获取增强书籍信息时出错: {str(e)}")
+        # 返回基本信息作为备用
+        return {
+            'book_id': book_id,
+            'book_name': f"未知小说_{book_id}",
+            'author': "未知作者",
+            'description': "暂无简介",
+            'thumb_url': None,
+            'read_count': None,
+            'creation_status': None,
+            'category_tags': []
+        }
 
 def fetch_api_endpoints_from_server():
     """从服务器获取API列表"""
@@ -476,65 +704,99 @@ def get_book_info(book_id, headers):
         print(f"获取书籍信息失败: {str(e)}")
         return None, None, None
 
-def load_status(save_path):
+def load_status(save_path, book_id=None):
     """加载下载状态"""
-    status_file = os.path.join(save_path, CONFIG["status_file"])
-    if os.path.exists(status_file):
+    # 优先使用基于书籍ID的状态文件格式
+    try:
+        from config import CONFIG as USER_CONFIG
+        status_file_format = USER_CONFIG.get("file", {}).get("status_file_format", ".{book_id}.download_status")
+        if book_id and "{book_id}" in status_file_format:
+            status_filename = status_file_format.format(book_id=book_id)
+        else:
+            # 回退到原来的格式
+            status_filename = CONFIG["status_file"]
+    except:
+        # 如果配置加载失败，使用默认格式
+        if book_id:
+            status_filename = f".{book_id}.download_status"
+        else:
+            status_filename = CONFIG["status_file"]
+    
+    # 创建状态文件子目录
+    status_dir = os.path.join(save_path, ".tomato_status")
+    os.makedirs(status_dir, exist_ok=True)
+    
+    # 新的状态文件路径
+    new_status_file = os.path.join(status_dir, status_filename)
+    
+    # 检查新位置的状态文件
+    if os.path.exists(new_status_file):
         try:
-            with open(status_file, 'r', encoding='utf-8') as f:
+            with open(new_status_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if isinstance(data, list):
                     return set(data)
                 return set()
         except:
             pass
+    
+    # 向后兼容：检查旧位置的状态文件
+    old_status_file = os.path.join(save_path, status_filename)
+    if os.path.exists(old_status_file):
+        try:
+            with open(old_status_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    downloaded_set = set(data)
+                    # 迁移到新位置
+                    try:
+                        with open(new_status_file, 'w', encoding='utf-8') as new_f:
+                            json.dump(list(downloaded_set), new_f, ensure_ascii=False, indent=2)
+                        # 删除旧文件
+                        os.remove(old_status_file)
+                        print(f"已迁移状态文件到新位置: {status_dir}")
+                    except:
+                        pass  # 迁移失败时静默处理
+                    return downloaded_set
+                return set()
+        except:
+            pass
+    
     return set()
 
-def save_status(save_path, downloaded):
+def save_status(save_path, downloaded, book_id=None):
     """保存下载状态"""
-    status_file = os.path.join(save_path, CONFIG["status_file"])
+    # 优先使用基于书籍ID的状态文件格式
+    try:
+        from config import CONFIG as USER_CONFIG
+        status_file_format = USER_CONFIG.get("file", {}).get("status_file_format", ".{book_id}.download_status")
+        if book_id and "{book_id}" in status_file_format:
+            status_filename = status_file_format.format(book_id=book_id)
+        else:
+            # 回退到原来的格式
+            status_filename = CONFIG["status_file"]
+    except:
+        # 如果配置加载失败，使用默认格式
+        if book_id:
+            status_filename = f".{book_id}.download_status"
+        else:
+            status_filename = CONFIG["status_file"]
+    
+    # 创建状态文件子目录
+    status_dir = os.path.join(save_path, ".tomato_status")
+    os.makedirs(status_dir, exist_ok=True)
+    
+    status_file = os.path.join(status_dir, status_filename)
     with open(status_file, 'w', encoding='utf-8') as f:
         json.dump(list(downloaded), f, ensure_ascii=False, indent=2)
 
-def test_cloudflare_proxy():
-    """测试Cloudflare Workers代理连接"""
-    try:
-        # 这里可以添加实际的代理测试逻辑
-        # 目前返回True表示测试通过
-        print("Cloudflare Workers代理测试通过")
-        return True
-    except Exception as e:
-        print(f"Cloudflare Workers代理测试失败: {str(e)}")
-        return False
-
-def download_chapter(chapter, headers, save_path, book_name, downloaded, book_id):
-    """下载单个章节"""
-    if chapter["id"] in downloaded:
-        return None
-
-    # 获取内容
-    _, content = down_text(chapter["id"], headers, book_id)
-
-    if content:
-        output_file_path = os.path.join(save_path, f"{book_name}.txt")
-        try:
-            with open(output_file_path, 'a', encoding='utf-8') as f:
-                f.write(f'{chapter["title"]}\n')
-                f.write(content + '\n\n')
-
-            downloaded.add(chapter["id"])
-            save_status(save_path, downloaded)
-            return chapter["index"], content
-        except Exception as e:
-            print(f"写入文件失败: {str(e)}")
-    return None
 
 def Run(book_id, save_path):
     """运行下载"""
     def signal_handler(sig, frame):
         print("\n检测到程序中断，正在保存已下载内容...")
         write_downloaded_chapters_in_order()
-        save_status(save_path, downloaded)
+        save_status(save_path, downloaded, book_id)
         print(f"已保存 {len(downloaded)} 个章节的进度")
         sys.exit(0)
 
@@ -567,7 +829,7 @@ def Run(book_id, save_path):
             author_name = "未知作者"
             description = "无简介"
 
-        downloaded = load_status(save_path)
+        downloaded = load_status(save_path, book_id)
         if downloaded:
             print(f"检测到您曾经下载过小说《{name}》。")
             if input("是否需要再次下载？(y/n)：") != "y":
@@ -636,7 +898,7 @@ def Run(book_id, save_path):
             todo_chapters = failed_chapters.copy()
             failed_chapters = []
             write_downloaded_chapters_in_order()
-            save_status(save_path, downloaded)
+            save_status(save_path, downloaded, book_id)
 
         # 单章下载
         def download_task(chapter):
@@ -673,7 +935,7 @@ def Run(book_id, save_path):
                         pbar.update(1)
 
             write_downloaded_chapters_in_order()
-            save_status(save_path, downloaded)
+            save_status(save_path, downloaded, book_id)
             todo_chapters = failed_chapters.copy()
             failed_chapters = []
 
@@ -686,19 +948,58 @@ def Run(book_id, save_path):
         print(f"运行错误: {str(e)}")
         if 'downloaded' in locals():
             write_downloaded_chapters_in_order()
-            save_status(save_path, downloaded)
+            save_status(save_path, downloaded, book_id)
 
 # GUI下载器类，用于兼容现有的GUI代码
 class GUIdownloader:
     """GUI下载器类，用于在GUI环境中下载小说"""
 
-    def __init__(self, book_id: str, save_path: str, status_callback: callable, progress_callback: callable):
+    def __init__(self, book_id: str, save_path: str, status_callback: callable, progress_callback: callable, 
+                 output_format: str = "TXT", generate_epub_when_txt: bool = False):
         self.book_id = book_id
         self.save_path = save_path
         self.status_callback = status_callback
         self.progress_callback = progress_callback
+        self.output_format = output_format
+        self.generate_epub_when_txt = generate_epub_when_txt
         self.stop_flag = False
         self.start_time = time.time()
+
+    def _generate_book_header(self, name: str, author_name: str, description: str, enhanced_info: dict = None) -> str:
+        """生成包含详细信息的书籍头部"""
+        import datetime
+        
+        header = f"书名: {name}\n"
+        header += f"作者: {author_name}\n"
+        
+        if enhanced_info:
+            # 添加详细信息
+            read_count = enhanced_info.get('read_count')
+            creation_status = enhanced_info.get('creation_status')
+            category_tags = enhanced_info.get('category_tags', [])
+            book_id = enhanced_info.get('book_id', '')
+            
+            if read_count:
+                header += f"阅读量: {read_count}\n"
+            
+            if creation_status:
+                status_text = "完结" if creation_status == "1" else "连载中"
+                header += f"连载状态: {status_text}\n"
+            
+            if category_tags:
+                categories = [tag.get('category_name', '') for tag in category_tags if tag.get('category_name')]
+                if categories:
+                    header += f"分类: {' | '.join(categories)}\n"
+            
+            if book_id:
+                header += f"书籍ID: {book_id}\n"
+        
+        header += f"下载时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        header += f"来源: 番茄小说\n"
+        header += f"内容简介: {description}\n"
+        header += f"{'='*50}\n\n"
+        
+        return header
 
     def stop_download(self):
         """停止下载"""
@@ -725,26 +1026,68 @@ class GUIdownloader:
                     self.status_callback("未找到任何章节，请检查小说ID是否正确")
                 return
 
-            name, author_name, description = get_book_info(self.book_id, headers)
-            if not name:
+            # 获取书籍信息（智能合并多个来源的数据）
+            enhanced_info = get_enhanced_book_info(self.book_id)
+            
+            if enhanced_info:
+                name = enhanced_info.get('book_name', '未知书名')
+                author_name = enhanced_info.get('author', '未知作者')
+                description = enhanced_info.get('description', '暂无简介')
+                
+                if self.status_callback:
+                    self.status_callback(f"获取到详细书籍信息: 《{name}》 - {author_name}")
+                    
+                    # 显示额外的详细信息
+                    read_count = enhanced_info.get('read_count')
+                    creation_status = enhanced_info.get('creation_status')
+                    category_tags = enhanced_info.get('category_tags', [])
+                    
+                    if read_count:
+                        self.status_callback(f"阅读量: {read_count}")
+                    
+                    if creation_status is not None:
+                        status_text = "完结" if creation_status == "1" else "连载中"
+                        self.status_callback(f"状态: {status_text}")
+                    
+                    if category_tags:
+                        categories = [tag.get('category_name', '') for tag in category_tags if tag.get('category_name')]
+                        if categories:
+                            self.status_callback(f"分类: {' | '.join(categories)}")
+                    
+                    if enhanced_info.get('thumb_url'):
+                        self.status_callback("检测到封面图片，EPUB版本将包含封面")
+            else:
+                # 如果完全获取失败，使用备用信息
                 name = f"未知小说_{self.book_id}"
                 author_name = "未知作者"
                 description = "无简介"
+                enhanced_info = None
+                
+                if self.status_callback:
+                    self.status_callback("无法获取书籍详细信息，使用默认信息")
 
             if self.status_callback:
                 self.status_callback(f"开始下载：《{name}》")
 
-            downloaded = load_status(self.save_path)
+            downloaded = load_status(self.save_path, self.book_id)
             todo_chapters = [ch for ch in chapters if ch["id"] not in downloaded]
 
             # 计算总章节数和已下载章节数
             total_chapters = len(chapters)
             already_downloaded = len(downloaded)
 
+            # 调试信息
+            if self.status_callback:
+                self.status_callback(f"总章节数: {total_chapters}, 已下载: {already_downloaded}, 待下载: {len(todo_chapters)}")
+
             # 设置初始进度（基于已下载的章节）
             initial_progress = int(already_downloaded / total_chapters * 100) if total_chapters > 0 else 0
             if self.progress_callback:
                 self.progress_callback(initial_progress)
+                
+            # 调试信息
+            if self.status_callback:
+                self.status_callback(f"设置初始进度: {initial_progress}%")
 
             if not todo_chapters:
                 if self.status_callback:
@@ -765,6 +1108,9 @@ class GUIdownloader:
             chapter_results = {}
             import threading
             lock = threading.Lock()
+
+            # 记录批量下载的成功数量，避免重复计算
+            batch_success_count = 0
 
             # 批量下载模式
             if (len(todo_chapters) > 100 and
@@ -797,6 +1143,7 @@ class GUIdownloader:
                         continue
 
                     # 处理批量下载结果
+                    batch_success = 0
                     for chap in batch:
                         if self.stop_flag:
                             break
@@ -814,28 +1161,39 @@ class GUIdownloader:
                                     "content": processed
                                 }
                                 downloaded.add(chap["id"])
-                                success_count += 1
+                                batch_success += 1
+                                batch_success_count += 1
                         else:
                             with lock:
                                 failed_chapters.append(chap)
 
-                    # 更新进度
-                    current_downloaded = already_downloaded + success_count
+                    # 批次完成后更新进度（而不是在每个章节后）
+                    current_downloaded = already_downloaded + batch_success_count
                     progress = int(current_downloaded / total_chapters * 100)
+                    
+                    # 调试信息
+                    if self.status_callback:
+                        self.status_callback(f"进度调试: 已下载={already_downloaded}, 批次成功={batch_success_count}, 总章节={total_chapters}, 进度={progress}%")
+                    
                     if self.progress_callback:
                         self.progress_callback(progress)
+
+                    if self.status_callback:
+                        self.status_callback(f"第 {current_batch} 批完成，成功下载 {batch_success}/{len(batch)} 章节")
 
                 # 写入批量下载的结果
                 if chapter_results:
                     with open(output_file_path, 'w', encoding='utf-8') as f:
-                        f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
+                        # 写入详细的书籍信息头部
+                        f.write(self._generate_book_header(name, author_name, description, enhanced_info))
+                        
                         for idx in range(len(chapters)):
                             if idx in chapter_results:
                                 result = chapter_results[idx]
                                 title = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
                                 f.write(f"{title}\n{result['content']}\n\n")
 
-                save_status(self.save_path, downloaded)
+                save_status(self.save_path, downloaded, self.book_id)
                 todo_chapters = failed_chapters.copy()
                 failed_chapters = []
 
@@ -843,12 +1201,14 @@ class GUIdownloader:
                     self.status_callback(f"批量下载完成，剩余 {len(todo_chapters)} 章节将使用单章模式下载")
 
             # 单章下载模式（处理批量下载失败的章节或小于100章的情况）
+            single_chapter_success_count = 0  # 单独计算单章下载的成功数
             for i, chapter in enumerate(todo_chapters):
                 if self.stop_flag:
                     break
 
                 if self.status_callback:
-                    current_pos = already_downloaded + success_count + i + 1
+                    # 显示当前章节在整体进度中的位置
+                    current_pos = already_downloaded + batch_success_count + single_chapter_success_count + 1
                     self.status_callback(f"正在下载: {chapter['title']} ({current_pos}/{total_chapters})")
 
                 title, content = down_text(chapter["id"], headers, self.book_id)
@@ -858,19 +1218,74 @@ class GUIdownloader:
                         f.write(f"{display_title}\n{content}\n\n")
 
                     downloaded.add(chapter["id"])
-                    save_status(self.save_path, downloaded)
-                    success_count += 1
+                    save_status(self.save_path, downloaded, self.book_id)
+                    single_chapter_success_count += 1
 
-                # 更新进度（基于总章节数）
-                current_downloaded = already_downloaded + success_count
+                # 更新进度（批量下载成功数 + 单章下载成功数）
+                current_downloaded = already_downloaded + batch_success_count + single_chapter_success_count
                 progress = int(current_downloaded / total_chapters * 100)
                 if self.progress_callback:
                     self.progress_callback(progress)
 
                 time.sleep(CONFIG["request_rate_limit"])
 
+            # 计算总成功数
+            total_success_count = batch_success_count + single_chapter_success_count
+
             if self.status_callback:
-                self.status_callback(f"下载完成！成功下载 {success_count} 个章节")
+                self.status_callback(f"下载完成！成功下载 {total_success_count} 个章节")
+
+            # 检查是否需要生成EPUB
+            if self.output_format == "EPUB" or (self.output_format == "TXT" and self.generate_epub_when_txt):
+                try:
+                    from utils import generate_enhanced_epub, generate_epub, sanitize_filename, EBOOKLIB_AVAILABLE
+                    
+                    if not EBOOKLIB_AVAILABLE:
+                        if self.status_callback:
+                            self.status_callback("警告：ebooklib未安装，无法生成EPUB文件")
+                    else:
+                        if self.status_callback:
+                            self.status_callback("正在生成增强版EPUB文件...")
+                            
+                        # 清理文件名
+                        safe_name = sanitize_filename(name)
+                        txt_file_path = os.path.join(self.save_path, f"{safe_name}.txt")
+                        
+                        if os.path.exists(txt_file_path):
+                            # 优先使用增强版EPUB生成（包含详细信息和封面）
+                            if enhanced_info:
+                                success = generate_enhanced_epub(
+                                    txt_file_path=txt_file_path,
+                                    output_dir=self.save_path,
+                                    book_info=enhanced_info
+                                )
+                            else:
+                                # 回退到基础EPUB生成
+                                success = generate_epub(
+                                    txt_file_path=txt_file_path,
+                                    output_dir=self.save_path,
+                                    book_title=safe_name,
+                                    author=author_name,
+                                    description=description
+                                )
+                            
+                            if success:
+                                if self.status_callback:
+                                    epub_type = "增强版EPUB" if enhanced_info else "基础EPUB"
+                                    self.status_callback(f"{epub_type}文件生成成功！")
+                            else:
+                                if self.status_callback:
+                                    self.status_callback("EPUB文件生成失败")
+                        else:
+                            if self.status_callback:
+                                self.status_callback("警告：找不到TXT文件，无法生成EPUB")
+                                
+                except ImportError:
+                    if self.status_callback:
+                        self.status_callback("错误：无法导入epub生成模块")
+                except Exception as e:
+                    if self.status_callback:
+                        self.status_callback(f"EPUB生成过程中出错: {str(e)}")
 
             if self.progress_callback:
                 self.progress_callback(100)

@@ -1485,9 +1485,230 @@ class NovelDownloaderGUI(ctk.CTk):
             messagebox.showerror("错误", "请输入书名或小说ID")
             return
 
-        # 这里可以添加搜索功能的实现
-        self.log(f"搜索功能暂未实现，输入内容: {input_text}", "warning")
-        messagebox.showinfo("提示", "搜索功能正在开发中，请直接输入小说ID进行下载")
+        # 判断是ID还是书名搜索
+        if input_text.isdigit() and len(input_text) > 10:
+            # 看起来像是小说ID，直接使用
+            self.log(f"检测到小说ID: {input_text}，可直接下载", "info")
+            return
+        
+        # 否则当作书名进行搜索
+        self.log(f"正在搜索: {input_text}", "info")
+        
+        # 在新线程中执行搜索，避免阻塞GUI
+        search_thread = threading.Thread(target=self._perform_search, args=(input_text,))
+        search_thread.daemon = True
+        search_thread.start()
+
+    def _perform_search(self, query: str):
+        """在后台线程中执行搜索"""
+        try:
+            from downloader import search_novels, format_search_results
+            
+            # 执行搜索
+            search_result = search_novels(query, limit=10)
+            
+            # 在主线程中更新GUI
+            self.after(0, self._update_search_results, search_result, query)
+            
+        except Exception as e:
+            error_msg = f"搜索出错: {str(e)}"
+            self.after(0, self.log, error_msg, "error")
+
+    def _update_search_results(self, search_result, query):
+        """在主线程中更新搜索结果"""
+        try:
+            from downloader import format_search_results
+            
+            if search_result is None:
+                self.log("搜索失败，请检查网络连接", "error")
+                return
+            
+            if search_result.get('code') != 0:
+                self.log("搜索API返回错误", "error")
+                return
+                
+            book_data = search_result.get('data', {}).get('book_data', [])
+            if not book_data:
+                self.log(f"未找到与 '{query}' 相关的小说", "warning")
+                return
+            
+            # 创建搜索结果窗口
+            self._show_search_results_window(book_data, query)
+            
+        except Exception as e:
+            self.log(f"处理搜索结果时出错: {str(e)}", "error")
+
+    def _show_search_results_window(self, book_data, query):
+        """显示搜索结果窗口"""
+        try:
+            import customtkinter as ctk
+            from utils import center_window_over_parent
+            
+            # 创建搜索结果窗口
+            results_window = ctk.CTkToplevel(self)
+            results_window.title(f"搜索结果 - {query}")
+            results_window.geometry("800x600")
+            results_window.transient(self)
+            results_window.grab_set()
+            
+            # 居中显示
+            center_window_over_parent(results_window, self)
+            
+            # 创建主框架
+            main_frame = ctk.CTkFrame(results_window)
+            main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # 标题标签
+            title_label = ctk.CTkLabel(
+                main_frame, 
+                text=f"找到 {len(book_data)} 本相关小说",
+                font=ctk.CTkFont(size=16, weight="bold")
+            )
+            title_label.pack(pady=(10, 5))
+            
+            # 创建滚动框架
+            scrollable_frame = ctk.CTkScrollableFrame(main_frame)
+            scrollable_frame.pack(fill="both", expand=True, padx=10, pady=5)
+            
+            # 显示搜索结果
+            for i, book in enumerate(book_data):
+                self._create_book_item(scrollable_frame, book, i + 1, results_window)
+            
+            # 关闭按钮
+            close_button = ctk.CTkButton(
+                main_frame,
+                text="关闭",
+                command=results_window.destroy,
+                width=100
+            )
+            close_button.pack(pady=10)
+            
+        except Exception as e:
+            self.log(f"显示搜索结果窗口时出错: {str(e)}", "error")
+
+    def _create_book_item(self, parent, book, index, results_window):
+        """创建单个书籍项目"""
+        try:
+            import customtkinter as ctk
+            
+            book_id = book.get('book_id', '')
+            book_name = book.get('book_name', '未知')
+            author = book.get('author', '未知作者')
+            read_count = book.get('read_count', '0')
+            creation_status = "完结" if book.get('creation_status') == "1" else "连载中"
+            abstract = book.get('abstract', '无简介')
+            
+            # 限制简介长度
+            if len(abstract) > 150:
+                abstract = abstract[:150] + "..."
+            
+            # 获取分类标签
+            categories = []
+            for tag in book.get('category_tags', []):
+                categories.append(tag.get('category_name', ''))
+            category_text = ' | '.join(categories) if categories else '无分类'
+            
+            # 创建书籍框架
+            book_frame = ctk.CTkFrame(parent)
+            book_frame.pack(fill="x", padx=5, pady=5)
+            
+            # 书籍信息框架
+            info_frame = ctk.CTkFrame(book_frame)
+            info_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+            
+            # 书名和序号
+            title_label = ctk.CTkLabel(
+                info_frame,
+                text=f"{index}. 《{book_name}》",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                anchor="w"
+            )
+            title_label.pack(fill="x", pady=(0, 5))
+            
+            # 作者和状态
+            author_label = ctk.CTkLabel(
+                info_frame,
+                text=f"作者: {author} | 状态: {creation_status} | 阅读量: {read_count}",
+                anchor="w"
+            )
+            author_label.pack(fill="x")
+            
+            # ID
+            id_label = ctk.CTkLabel(
+                info_frame,
+                text=f"ID: {book_id}",
+                anchor="w",
+                text_color="gray"
+            )
+            id_label.pack(fill="x")
+            
+            # 分类
+            category_label = ctk.CTkLabel(
+                info_frame,
+                text=f"分类: {category_text}",
+                anchor="w"
+            )
+            category_label.pack(fill="x")
+            
+            # 简介
+            abstract_label = ctk.CTkLabel(
+                info_frame,
+                text=f"简介: {abstract}",
+                anchor="w",
+                wraplength=500,
+                justify="left"
+            )
+            abstract_label.pack(fill="x", pady=(5, 0))
+            
+            # 选择按钮框架
+            button_frame = ctk.CTkFrame(book_frame)
+            button_frame.pack(side="right", padx=10, pady=10)
+            
+            # 选择按钮
+            select_button = ctk.CTkButton(
+                button_frame,
+                text="选择此书",
+                width=100,
+                command=lambda: self._select_book(book_id, book_name, results_window)
+            )
+            select_button.pack(pady=5)
+            
+            # 复制ID按钮
+            copy_button = ctk.CTkButton(
+                button_frame,
+                text="复制ID",
+                width=100,
+                command=lambda: self._copy_book_id(book_id)
+            )
+            copy_button.pack(pady=5)
+            
+        except Exception as e:
+            self.log(f"创建书籍项目时出错: {str(e)}", "error")
+
+    def _select_book(self, book_id, book_name, results_window):
+        """选择书籍"""
+        try:
+            # 设置小说ID
+            self.novel_id.delete(0, "end")
+            self.novel_id.insert(0, book_id)
+            
+            # 关闭搜索结果窗口
+            results_window.destroy()
+            
+            # 记录日志
+            self.log(f"已选择小说: 《{book_name}》 (ID: {book_id})", "info")
+            
+        except Exception as e:
+            self.log(f"选择书籍时出错: {str(e)}", "error")
+
+    def _copy_book_id(self, book_id):
+        """复制书籍ID到剪贴板"""
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(book_id)
+            self.log(f"已复制ID到剪贴板: {book_id}", "info")
+        except Exception as e:
+            self.log(f"复制ID时出错: {str(e)}", "error")
 
 
 
@@ -1562,11 +1783,17 @@ class NovelDownloaderGUI(ctk.CTk):
 
         self.log(f"准备下载 ID: {book_id_to_download}")
 
+        # 获取输出格式设置
+        output_format = self.get_output_format()
+        generate_epub_when_txt = self.generate_epub_var.get() if hasattr(self, 'generate_epub_var') else False
+        
         self.current_fq_downloader = GUIdownloader(
             book_id=book_id_to_download,
             save_path=save_path,
             status_callback=self.log,
-            progress_callback=self._update_gui_progress_adapter
+            progress_callback=self._update_gui_progress_adapter,
+            output_format=output_format,
+            generate_epub_when_txt=generate_epub_when_txt
         )
 
         def download_thread_target_wrapper():
