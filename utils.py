@@ -172,7 +172,7 @@ def generate_enhanced_epub(txt_file_path: str, output_dir: str, book_info: dict)
             book.add_metadata(None, 'meta', read_count, {'name': 'read_count', 'content': read_count})
         
         if creation_status:
-            status_text = "完结" if creation_status == "1" else "连载中"
+            status_text = "完结" if creation_status == "0" else "连载中"
             book.add_metadata(None, 'meta', status_text, {'name': 'creation_status', 'content': status_text})
         
         # 下载并添加封面
@@ -284,7 +284,7 @@ def _create_book_info_page(book_info: dict, has_cover: bool) -> str:
     category_tags = book_info.get('category_tags', [])
     book_id = book_info.get('book_id', '')
     
-    status_text = "完结" if creation_status == "1" else "连载中" if creation_status == "0" else "未知"
+    status_text = "完结" if creation_status == "0" else "连载中" if creation_status == "1" else "未知"
     
     # 处理分类标签
     categories = []

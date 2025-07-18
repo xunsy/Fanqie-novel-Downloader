@@ -69,6 +69,8 @@ class NovelDownloaderGUI(ctk.CTk):
         # 状态变量
         self.is_downloading = False
         self.downloaded_chapters = set()
+        # 下载模式: batch 或 single
+        self.download_mode_var = ctk.StringVar(value=CONFIG.get("request", {}).get("download_mode", "batch"))
         self.download_thread: Optional[threading.Thread] = None
         self.current_fq_downloader: Optional[GUIdownloader] = None
 
@@ -187,6 +189,15 @@ class NovelDownloaderGUI(ctk.CTk):
 
         except Exception as e:
             print(f"处理小屏幕布局时出错: {e}")
+
+    def _save_download_mode(self):
+        """保存下载模式到用户配置"""
+        # 确保request配置节存在
+        if "request" not in CONFIG:
+            CONFIG["request"] = {}
+        CONFIG["request"]["download_mode"] = self.download_mode_var.get()
+        save_user_config(CONFIG)
+        print(f"下载模式已保存: {self.download_mode_var.get()}")
 
     def _ensure_components_visible(self):
         """确保所有组件都在可见区域内"""
@@ -345,6 +356,8 @@ class NovelDownloaderGUI(ctk.CTk):
         )
         self.save_path.grid(row=2, column=1, padx=(0, 10), pady=10, sticky="ew")
 
+
+
         browse_button = ctk.CTkButton(
             control_frame,
             text="📂",
@@ -358,6 +371,14 @@ class NovelDownloaderGUI(ctk.CTk):
         )
         browse_button.grid(row=2, column=2, padx=(0, 15), pady=10)
 
+        # 第三行：下载模式选择
+        mode_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
+        mode_frame.grid(row=3, column=0, columnspan=3, padx=(15, 10), pady=(5, 5), sticky="w")
+        mode_label = ctk.CTkLabel(mode_frame, text="⚙️ 下载模式:", anchor="w", width=80, font=ctk.CTkFont(size=12, weight="bold"), text_color=self.colors["text"])
+        mode_label.pack(side="left")
+        ctk.CTkRadioButton(mode_frame, text="Dlmily", variable=self.download_mode_var, value="batch", command=self._save_download_mode).pack(side="left", padx=5)
+        ctk.CTkRadioButton(mode_frame, text="rabbits0209", variable=self.download_mode_var, value="single", command=self._save_download_mode).pack(side="left", padx=5)
+
         # 路径状态指示器
         self.path_status_label = ctk.CTkLabel(
             control_frame,
@@ -366,7 +387,7 @@ class NovelDownloaderGUI(ctk.CTk):
             font=ctk.CTkFont(size=9),
             text_color=self.colors["text_secondary"]
         )
-        self.path_status_label.grid(row=3, column=1, padx=(0, 10), pady=(0, 5), sticky="w")
+        
 
         # 智能加载保存路径
         self._load_save_path()
@@ -375,7 +396,7 @@ class NovelDownloaderGUI(ctk.CTk):
         self.save_path.bind('<KeyRelease>', self._on_save_path_changed)
         self.save_path.bind('<FocusOut>', self._on_save_path_changed)
 
-        # 第三行：输出格式选择
+        # 第四行：输出格式选择
         format_label = ctk.CTkLabel(
             control_frame,
             text="📄 输出格式:",
@@ -385,6 +406,7 @@ class NovelDownloaderGUI(ctk.CTk):
             text_color=self.colors["text"]
         )
         format_label.grid(row=4, column=0, padx=(15, 10), pady=10, sticky="w")
+        self.path_status_label.grid(row=2, column=1, padx=(0, 10), pady=(35, 0), sticky="sw") # 移动到路径输入框下方
 
         self.output_format = ctk.CTkSegmentedButton(
             control_frame,
@@ -402,9 +424,9 @@ class NovelDownloaderGUI(ctk.CTk):
         self.output_format.grid(row=4, column=1, columnspan=2, padx=(0, 15), pady=10, sticky="w")
         self.output_format.set("📝 TXT")
 
-        # 第四行：主要操作按钮
+        # 第五行：主操作按钮
         button_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
-        button_frame.grid(row=5, column=0, columnspan=3, padx=15, pady=15, sticky="ew")
+        button_frame.grid(row=6, column=0, columnspan=3, padx=15, pady=(15, 20), sticky="ew")
         button_frame.grid_columnconfigure((0, 1), weight=1)
 
         self.download_button = ctk.CTkButton(
@@ -678,6 +700,53 @@ class NovelDownloaderGUI(ctk.CTk):
             text_color=self.colors["text_secondary"]
         )
         timeout_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
+
+        # 单章批量大小
+        single_batch_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
+        single_batch_frame.pack(fill="x", padx=15, pady=(0, 15))
+        single_batch_frame.grid_columnconfigure(1, weight=1)
+
+        single_batch_label = ctk.CTkLabel(
+            single_batch_frame,
+            text="📦 rabbits0209批量:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=self.colors["text"],
+            width=100
+        )
+        single_batch_label.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
+
+        self.single_batch_var = tk.IntVar(value=CONFIG.get("request", {}).get("single_batch_size", 30))
+        single_batch_slider = ctk.CTkSlider(
+            single_batch_frame,
+            from_=5,
+            to=30,
+            number_of_steps=25,
+            variable=self.single_batch_var,
+            progress_color=self.colors["accent"],
+            button_color=self.colors["success"],
+            button_hover_color=self.colors["primary"],
+            height=20
+        )
+        single_batch_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        single_batch_value_label = ctk.CTkLabel(
+            single_batch_frame,
+            textvariable=self.single_batch_var,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=self.colors["accent"],
+            width=30
+        )
+        single_batch_value_label.grid(row=0, column=2, padx=(10, 0), pady=5)
+        single_batch_slider.configure(command=lambda v: single_batch_value_label.configure(text=str(int(v))))
+
+        # 添加说明文字
+        single_batch_desc = ctk.CTkLabel(
+            single_batch_frame,
+            text="💡 提示：rabbits0209模式每次批量请求的章节数，最大30章，数值越大效率越高",
+            font=ctk.CTkFont(size=9),
+            text_color=self.colors["text_secondary"]
+        )
+        single_batch_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
 
         # 保存按钮（放在每个页面的底部）
         save_button = ctk.CTkButton(
@@ -1004,6 +1073,7 @@ class NovelDownloaderGUI(ctk.CTk):
             # 保存性能设置
             CONFIG["request"]["max_workers"] = self.workers_var.get()
             CONFIG["request"]["timeout"] = self.timeout_var.get()
+            CONFIG["request"]["single_batch_size"] = self.single_batch_var.get()
 
             # 保存输出设置
             if "output" not in CONFIG:
@@ -1595,7 +1665,7 @@ class NovelDownloaderGUI(ctk.CTk):
             book_name = book.get('book_name', '未知')
             author = book.get('author', '未知作者')
             read_count = book.get('read_count', '0')
-            creation_status = "完结" if book.get('creation_status') == "1" else "连载中"
+            creation_status = "完结" if book.get('creation_status') == "0" else "连载中"
             abstract = book.get('abstract', '无简介')
             
             # 限制简介长度
@@ -1793,7 +1863,8 @@ class NovelDownloaderGUI(ctk.CTk):
             status_callback=self.log,
             progress_callback=self._update_gui_progress_adapter,
             output_format=output_format,
-            generate_epub_when_txt=generate_epub_when_txt
+            generate_epub_when_txt=generate_epub_when_txt,
+            download_mode=self.download_mode_var.get()
         )
 
         def download_thread_target_wrapper():

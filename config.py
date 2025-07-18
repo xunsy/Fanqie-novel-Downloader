@@ -45,6 +45,8 @@ REQUEST_CONFIG: Dict[str, Any] = {
     "max_retries": 3,
     "timeout": 10,
     "request_rate_limit": 0.05,
+    "download_mode": "batch",  # 默认Dlmily模式(batch) 或 rabbits0209模式(single)
+    "single_batch_size": 30,  # rabbits0209模式的批量请求大小（最大30章）
     "default_download_channel": "official",
     "download_channels": {
         "official": {

@@ -253,7 +253,7 @@ def format_search_results(search_data: Dict) -> str:
         book_name = book.get('book_name', '未知')
         author = book.get('author', '未知作者')
         read_count = book.get('read_count', '0')
-        creation_status = "完结" if book.get('creation_status') == "1" else "连载中"
+        creation_status = "完结" if book.get('creation_status') == "0" else "连载中"
         abstract = book.get('abstract', '无简介')[:100] + ('...' if len(book.get('abstract', '')) > 100 else '')
         
         # 获取分类标签
@@ -492,9 +492,9 @@ def extract_chapters(soup):
     return chapters
 
 def batch_download_chapters(item_ids, headers):
-    """批量下载章节内容"""
+    """Dlmily模式下载章节内容"""
     if not CONFIG["batch_config"]["enabled"]:
-        print("批量下载功能未启用")
+        print("Dlmily下载功能未启用")
         return None
 
     batch_config = CONFIG["batch_config"]
@@ -524,11 +524,131 @@ def batch_download_chapters(item_ids, headers):
                 return data["data"]
             return data
         else:
-            print(f"批量下载失败，状态码: {response.status_code}")
+            print(f"Dlmily下载失败，状态码: {response.status_code}")
             return None
 
     except Exception as e:
-        print(f"批量下载异常！")
+        print(f"Dlmily下载异常！")
+        return None
+
+def qwq_batch_download_chapters(item_ids, headers):
+    """rabbits0209模式批量下载章节内容"""
+    try:
+        # 构建qwq批量请求URL - 使用正确的批量下载格式
+        item_ids_str = ",".join(item_ids)
+        url = f"https://qwq.tutuxka.top/api/index.php?api=content&item_ids={item_ids_str}&api_type=batch"
+
+        print(f"rabbits0209批量请求URL: {url}")
+        print(f"请求章节数: {len(item_ids)}")
+
+        # 随机延迟
+        time.sleep(random.uniform(0.1, 0.5))
+
+        # 修改请求头，避免Brotli压缩问题
+        qwq_headers = headers.copy()
+        qwq_headers['Accept-Encoding'] = 'gzip, deflate'  # 移除br压缩
+
+        # 直接使用requests，不使用make_request以避免Tor相关问题
+        try:
+            response = requests.get(
+                url,
+                headers=qwq_headers,
+                timeout=CONFIG["request_timeout"],
+                verify=False
+            )
+        except Exception as e:
+            print(f"rabbits0209批量请求失败: {str(e)}")
+            return None
+
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                print(f"rabbits0209批量下载成功，返回数据类型: {type(data)}")
+
+                # 检查是否有错误信息
+                if isinstance(data, dict) and "error" in data:
+                    print(f"rabbits0209 API返回错误: {data.get('error')}")
+                    # 检查trace信息，可能包含具体的章节错误
+                    trace = data.get("trace", {})
+                    if isinstance(trace, dict) and "data" in trace:
+                        trace_data = trace["data"]
+                        print(f"错误详情: {trace_data}")
+                    return None
+
+                # rabbits0209 API返回格式处理
+                if isinstance(data, dict):
+                    results = {}
+
+                    # 检查是否是标准的API响应格式 {success: true, data: [...]}
+                    if "success" in data and "data" in data and data["success"]:
+                        chapter_list = data["data"]
+                        if isinstance(chapter_list, list):
+                            # 处理列表格式的章节数据
+                            for i, chapter_data in enumerate(chapter_list):
+                                if isinstance(chapter_data, dict) and "content" in chapter_data:
+                                    content = chapter_data.get("content", "")
+                                    if content:
+                                        processed_content = process_chapter_content(content)
+                                        # 使用对应的章节ID作为键
+                                        chapter_id = item_ids[i] if i < len(item_ids) else str(i)
+                                        results[chapter_id] = {
+                                            "content": processed_content,
+                                            "title": chapter_data.get("title", "")
+                                        }
+                                        print(f"成功处理章节 {chapter_id}: {chapter_data.get('title', '无标题')}")
+                                    else:
+                                        print(f"章节索引 {i} 内容为空")
+                                else:
+                                    print(f"章节索引 {i} 数据格式异常: {chapter_data}")
+                        else:
+                            print(f"data字段不是列表格式: {type(chapter_list)}")
+                    else:
+                        # 处理直接的章节字典格式
+                        for chapter_id, chapter_data in data.items():
+                            if isinstance(chapter_data, dict) and "content" in chapter_data:
+                                content = chapter_data.get("content", "")
+                                if content:
+                                    processed_content = process_chapter_content(content)
+                                    results[chapter_id] = {
+                                        "content": processed_content,
+                                        "title": chapter_data.get("title", "")
+                                    }
+                                else:
+                                    print(f"章节 {chapter_id} 内容为空")
+                            else:
+                                print(f"章节 {chapter_id} 数据格式异常: {chapter_data}")
+
+                    print(f"rabbits0209批量下载处理完成，成功章节数: {len(results)}")
+                    return results if results else None
+                elif isinstance(data, list):
+                    # 如果返回的是列表格式
+                    results = {}
+                    for i, chapter_data in enumerate(data):
+                        if isinstance(chapter_data, dict) and "content" in chapter_data:
+                            chapter_id = item_ids[i] if i < len(item_ids) else str(i)
+                            content = chapter_data.get("content", "")
+                            if content:
+                                processed_content = process_chapter_content(content)
+                                results[chapter_id] = {
+                                    "content": processed_content,
+                                    "title": chapter_data.get("title", "")
+                                }
+                    print(f"rabbits0209批量下载处理完成，成功章节数: {len(results)}")
+                    return results
+                else:
+                    print(f"rabbits0209批量下载返回格式异常: {type(data)}")
+                    return None
+            except json.JSONDecodeError as e:
+                print(f"rabbits0209批量下载JSON解析失败: {str(e)}")
+                print(f"响应内容: {response.text[:200]}...")
+                return None
+        else:
+            print(f"rabbits0209批量下载失败，状态码: {response.status_code}")
+            print(f"响应内容: {response.text[:200]}...")
+            return None
+
+    except Exception as e:
+        print(f"rabbits0209批量下载异常: {str(e)}")
         return None
 
 def process_chapter_content(content):
@@ -579,13 +699,26 @@ def down_text(chapter_id, headers, book_id=None):
             time.sleep(random.uniform(0.1, 0.5))
 
             start_time = time.time()
-            response = make_request(
-                current_endpoint,
-                headers=headers.copy(),
-                timeout=CONFIG["request_timeout"],
-                verify=False,
-                use_tor=True
-            )
+
+            # 对qwq API特殊处理，避免Brotli压缩问题
+            if api_name == "qwq":
+                print(f"qwq单章请求URL: {current_endpoint}")
+                qwq_headers = headers.copy()
+                qwq_headers['Accept-Encoding'] = 'gzip, deflate'  # 移除br压缩
+                response = requests.get(
+                    current_endpoint,
+                    headers=qwq_headers,
+                    timeout=CONFIG["request_timeout"],
+                    verify=False
+                )
+            else:
+                response = make_request(
+                    current_endpoint,
+                    headers=headers.copy(),
+                    timeout=CONFIG["request_timeout"],
+                    verify=False,
+                    use_tor=True
+                )
 
             response_time = time.time() - start_time
             down_text.api_status[endpoint["url"]].update({
@@ -617,11 +750,24 @@ def down_text(chapter_id, headers, book_id=None):
                 processed_content = process_chapter_content(content)
                 return chapter_title, processed_content
 
+            elif api_name == "qwq":
+                if content:
+                    processed_content = process_chapter_content(content)
+                    return chapter_title, processed_content
+                else:
+                    # 检查是否有错误信息
+                    if isinstance(data, dict) and "error" in data:
+                        print(f"qwq API返回错误: {data.get('error')}")
+                        if "trace" in data:
+                            print(f"错误详情: {data['trace']}")
+                    else:
+                        print(f"qwq API返回空内容")
+
             print(f"API返回空内容，继续尝试下一个API...")
             down_text.api_status[endpoint["url"]]["error_count"] += 1
 
         except Exception as e:
-            print(f"API请求失败！")
+            print(f"API请求失败: {str(e)}")
             down_text.api_status[endpoint["url"]]["error_count"] += 1
             time.sleep(3)
 
@@ -854,14 +1000,13 @@ def Run(book_id, save_path):
         chapter_results = {}
         lock = threading.Lock()
 
-        # 批量下载
-        if (len(todo_chapters) > 100 and
-            CONFIG["batch_config"]["enabled"] and
+        # Dlmily下载 - 命令行模式默认使用Dlmily下载
+        if (CONFIG["batch_config"]["enabled"] and
             any(ep["name"] == "qyuing" for ep in CONFIG["api_endpoints"])):
-            print("检测到大量章节，启用批量下载模式...")
+            print("启用Dlmily下载模式...")
             batch_size = CONFIG["batch_config"]["max_batch_size"]
 
-            with tqdm(total=len(todo_chapters), desc="批量下载进度") as pbar:
+            with tqdm(total=len(todo_chapters), desc="Dlmily下载进度") as pbar:
                 for i in range(0, len(todo_chapters), batch_size):
                     batch = todo_chapters[i:i + batch_size]
                     item_ids = [chap["id"] for chap in batch]
@@ -900,7 +1045,7 @@ def Run(book_id, save_path):
             write_downloaded_chapters_in_order()
             save_status(save_path, downloaded, book_id)
 
-        # 单章下载
+        # rabbits0209下载
         def download_task(chapter):
             nonlocal success_count
             try:
@@ -930,7 +1075,7 @@ def Run(book_id, save_path):
             with ThreadPoolExecutor(max_workers=CONFIG["max_workers"]) as executor:
                 futures = [executor.submit(download_task, ch) for ch in todo_chapters]
 
-                with tqdm(total=len(todo_chapters), desc="单章下载进度") as pbar:
+                with tqdm(total=len(todo_chapters), desc="rabbits0209下载进度") as pbar:
                     for _ in as_completed(futures):
                         pbar.update(1)
 
@@ -955,13 +1100,14 @@ class GUIdownloader:
     """GUI下载器类，用于在GUI环境中下载小说"""
 
     def __init__(self, book_id: str, save_path: str, status_callback: callable, progress_callback: callable, 
-                 output_format: str = "TXT", generate_epub_when_txt: bool = False):
+                 output_format: str = "TXT", generate_epub_when_txt: bool = False, download_mode: str = "batch"):
         self.book_id = book_id
         self.save_path = save_path
         self.status_callback = status_callback
         self.progress_callback = progress_callback
         self.output_format = output_format
         self.generate_epub_when_txt = generate_epub_when_txt
+        self.download_mode = download_mode  # 'batch'(Dlmily) or 'single'(rabbits0209)
         self.stop_flag = False
         self.start_time = time.time()
 
@@ -983,7 +1129,7 @@ class GUIdownloader:
                 header += f"阅读量: {read_count}\n"
             
             if creation_status:
-                status_text = "完结" if creation_status == "1" else "连载中"
+                status_text = "完结" if creation_status == "0" else "连载中"
                 header += f"连载状态: {status_text}\n"
             
             if category_tags:
@@ -1009,6 +1155,18 @@ class GUIdownloader:
 
     def run(self):
         """运行下载"""
+        # 使用用户配置的线程数覆盖默认值
+        try:
+            from config import CONFIG as user_config
+            CONFIG["max_workers"] = user_config.get("request", {}).get("max_workers", CONFIG.get("max_workers", 4))
+            # 覆盖请求限速
+            CONFIG["request_rate_limit"] = user_config.get("request", {}).get("request_rate_limit", CONFIG.get("request_rate_limit", 0))
+            # 覆盖请求超时
+            CONFIG["request_timeout"] = user_config.get("request", {}).get("timeout", CONFIG.get("request_timeout", 15))
+            # 注意：不覆盖下载模式，优先使用GUI传入的值
+            # self.download_mode 保持GUI传入的值不变
+        except Exception:
+            pass
         try:
             if self.status_callback:
                 self.status_callback("正在初始化...")
@@ -1046,7 +1204,7 @@ class GUIdownloader:
                         self.status_callback(f"阅读量: {read_count}")
                     
                     if creation_status is not None:
-                        status_text = "完结" if creation_status == "1" else "连载中"
+                        status_text = "完结" if creation_status == "0" else "连载中"
                         self.status_callback(f"状态: {status_text}")
                     
                     if category_tags:
@@ -1109,16 +1267,26 @@ class GUIdownloader:
             import threading
             lock = threading.Lock()
 
-            # 记录批量下载的成功数量，避免重复计算
+            # 记录Dlmily下载的成功数量，避免重复计算
             batch_success_count = 0
 
-            # 批量下载模式
-            if (len(todo_chapters) > 100 and
-                CONFIG["batch_config"]["enabled"] and
-                any(ep["name"] == "qyuing" for ep in CONFIG["api_endpoints"])):
+            # 根据下载模式设置API列表 - 必须在Dlmily下载判断之前设置
+            if self.download_mode == 'single':
+                # rabbits0209模式：强制使用qwq API，清除其他API避免Dlmily下载误判
+                # qwq API统一使用item_ids参数，单章和批量都使用相同的基础URL格式
+                CONFIG["api_endpoints"] = [{"name": "qwq", "url": "https://qwq.tutuxka.top/api/index.php?api=content&item_ids={chapter_id}"}]
+                # 同时禁用Dlmily下载配置，确保不会触发Dlmily下载
+                CONFIG["batch_config"]["enabled"] = False
+                if self.status_callback:
+                    self.status_callback("已设置为rabbits0209下载模式，使用qwq API")
+
+            # Dlmily下载模式 - 只有在明确选择batch模式时才执行
+            if self.download_mode == 'batch' and\
+                CONFIG["batch_config"]["enabled"] and\
+                any(ep["name"] == "qyuing" for ep in CONFIG["api_endpoints"]):
 
                 if self.status_callback:
-                    self.status_callback("检测到大量章节，启用批量下载模式...")
+                    self.status_callback("启用Dlmily下载模式...")
 
                 batch_size = CONFIG["batch_config"]["max_batch_size"]
                 total_batches = (len(todo_chapters) + batch_size - 1) // batch_size
@@ -1131,14 +1299,14 @@ class GUIdownloader:
                     current_batch = batch_idx // batch_size + 1
 
                     if self.status_callback:
-                        self.status_callback(f"批量下载第 {current_batch}/{total_batches} 批 ({len(batch)} 章节)")
+                        self.status_callback(f"Dlmily下载第 {current_batch}/{total_batches} 批 ({len(batch)} 章节)")
 
                     item_ids = [chap["id"] for chap in batch]
                     batch_results = batch_download_chapters(item_ids, headers)
 
                     if not batch_results:
                         if self.status_callback:
-                            self.status_callback(f"第 {current_batch} 批下载失败，将使用单章模式重试")
+                            self.status_callback(f"第 {current_batch} 批下载失败，将使用rabbits0209模式重试")
                         failed_chapters.extend(batch)
                         continue
 
@@ -1181,7 +1349,7 @@ class GUIdownloader:
                     if self.status_callback:
                         self.status_callback(f"第 {current_batch} 批完成，成功下载 {batch_success}/{len(batch)} 章节")
 
-                # 写入批量下载的结果
+                # 写入Dlmily下载的结果
                 if chapter_results:
                     with open(output_file_path, 'w', encoding='utf-8') as f:
                         # 写入详细的书籍信息头部
@@ -1198,36 +1366,148 @@ class GUIdownloader:
                 failed_chapters = []
 
                 if self.status_callback and todo_chapters:
-                    self.status_callback(f"批量下载完成，剩余 {len(todo_chapters)} 章节将使用单章模式下载")
+                    self.status_callback(f"Dlmily下载完成，剩余 {len(todo_chapters)} 章节将使用rabbits0209模式下载")
 
-            # 单章下载模式（处理批量下载失败的章节或小于100章的情况）
-            single_chapter_success_count = 0  # 单独计算单章下载的成功数
-            for i, chapter in enumerate(todo_chapters):
+            # rabbits0209下载模式 - 使用qwq批量请求
+            single_chapter_success_count = 0  # 单独计算rabbits0209下载的成功数
+            if self.status_callback and todo_chapters:
+                self.status_callback("开始rabbits0209批量请求模式...")
+
+            # 添加重试循环机制
+            attempt = 1
+            max_attempts = CONFIG.get("max_retries", 3)
+            all_single_results = {}  # 收集所有成功下载的章节
+
+            # 获取rabbits0209模式的批量大小（最大30章）
+            try:
+                # 使用全局CONFIG，避免重复导入
+                from config import CONFIG as user_config
+                single_batch_size = min(user_config.get("request", {}).get("single_batch_size", 30), 30)
+                print(f"rabbits0209批量大小设置: {single_batch_size}")
+            except Exception as e:
+                print(f"获取批量大小配置失败: {e}，使用默认值30")
+                single_batch_size = 30
+
+            # 确保批量大小至少为1
+            if single_batch_size < 1:
+                single_batch_size = 1
+                print("批量大小调整为最小值1")
+
+            while todo_chapters and attempt <= max_attempts:
                 if self.stop_flag:
                     break
 
+                if attempt > 1 and self.status_callback:
+                    self.status_callback(f"第 {attempt} 次重试，剩余 {len(todo_chapters)} 个章节...")
+
+                failed_chapters_this_round = []
+
+                # 使用rabbits0209批量请求
                 if self.status_callback:
-                    # 显示当前章节在整体进度中的位置
-                    current_pos = already_downloaded + batch_success_count + single_chapter_success_count + 1
-                    self.status_callback(f"正在下载: {chapter['title']} ({current_pos}/{total_chapters})")
+                    self.status_callback(f"使用rabbits0209批量请求，每批 {single_batch_size} 章节...")
 
-                title, content = down_text(chapter["id"], headers, self.book_id)
-                if content:
+                for batch_start in range(0, len(todo_chapters), single_batch_size):
+                    if self.stop_flag:
+                        break
+
+                    batch_chapters = todo_chapters[batch_start:batch_start + single_batch_size]
+                    batch_item_ids = [ch["id"] for ch in batch_chapters]
+
+                    batch_num = batch_start // single_batch_size + 1
+                    total_batches = (len(todo_chapters) + single_batch_size - 1) // single_batch_size
+
+                    if self.status_callback:
+                        self.status_callback(f"rabbits0209批量请求第 {batch_num}/{total_batches} 批 ({len(batch_chapters)} 章节)")
+
+                    print(f"处理第 {batch_num} 批，章节IDs: {batch_item_ids[:3]}{'...' if len(batch_item_ids) > 3 else ''}")
+
+                    # 调用rabbits0209批量下载
+                    batch_results = qwq_batch_download_chapters(batch_item_ids, headers)
+
+                    if batch_results:
+                        # 处理批量下载结果
+                        for chapter in batch_chapters:
+                            chapter_id = chapter["id"]
+                            if chapter_id in batch_results:
+                                chapter_data = batch_results[chapter_id]
+                                content = chapter_data.get("content", "")
+                                title = chapter_data.get("title", "")
+
+                                if content:
+                                    all_single_results[chapter["index"]] = (chapter, title, content)
+                                    downloaded.add(chapter["id"])
+                                    save_status(self.save_path, downloaded, self.book_id)
+                                    single_chapter_success_count += 1
+
+                                    if self.status_callback:
+                                        current_pos = already_downloaded + batch_success_count + single_chapter_success_count
+                                        self.status_callback(f"已下载: {chapter['title']} ({current_pos}/{total_chapters})")
+                                    if self.progress_callback:
+                                        progress = int(current_pos / total_chapters * 100)
+                                        self.progress_callback(progress)
+                                else:
+                                    print(f"章节 {chapter_id} ({chapter['title']}) 内容为空")
+                                    failed_chapters_this_round.append(chapter)
+                            else:
+                                # 批量结果中没有这个章节，标记为失败
+                                print(f"章节 {chapter_id} ({chapter['title']}) 不在批量结果中")
+                                failed_chapters_this_round.append(chapter)
+
+                        # 统计本批次成功数量
+                        successful_in_batch = len([c for c in batch_chapters if c["id"] in batch_results and batch_results[c["id"]].get("content")])
+                        if self.status_callback:
+                            self.status_callback(f"第 {batch_num} 批完成: {successful_in_batch}/{len(batch_chapters)} 章节成功")
+                    else:
+                        # 整批失败，所有章节都加入重试列表
+                        failed_chapters_this_round.extend(batch_chapters)
+                        if self.status_callback:
+                            self.status_callback(f"第 {batch_num} 批rabbits0209批量请求完全失败，将重试")
+
+                    # 批次间延迟
+                    time.sleep(CONFIG["request_rate_limit"])
+
+
+
+                # 更新待重试章节列表
+                todo_chapters = failed_chapters_this_round.copy()
+                attempt += 1
+
+                # 如果还有失败章节且未达到最大重试次数，等待后重试
+                if todo_chapters and attempt <= max_attempts:
+                    if self.status_callback:
+                        self.status_callback(f"等待 2 秒后进行重试...")
+                    time.sleep(2)
+            # 写入rabbits0209下载结果 - 按章节索引顺序写入
+            if all_single_results:
+                # 如果没有Dlmily下载的结果，需要重写整个文件以确保顺序正确
+                if batch_success_count == 0:
+                    # 合并所有结果（Dlmily+rabbits0209）到chapter_results
+                    for idx, (chapter, title, content) in all_single_results.items():
+                        chapter_results[idx] = {
+                            "base_title": chapter["title"],
+                            "api_title": title,
+                            "content": content
+                        }
+
+                    # 重写整个文件，按章节顺序
+                    with open(output_file_path, 'w', encoding='utf-8') as f:
+                        f.write(self._generate_book_header(name, author_name, description, enhanced_info))
+                        for idx in range(len(chapters)):
+                            if idx in chapter_results:
+                                result = chapter_results[idx]
+                                title_display = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
+                                f.write(f"{title_display}\n{result['content']}\n\n")
+                else:
+                    # 如果有Dlmily下载结果，只追加rabbits0209结果（按顺序）
                     with open(output_file_path, 'a', encoding='utf-8') as f:
-                        display_title = f'{chapter["title"]} {title}' if title else chapter["title"]
-                        f.write(f"{display_title}\n{content}\n\n")
+                        for idx in sorted(all_single_results.keys()):
+                            chapter, title, content = all_single_results[idx]
+                            display_title = f"{chapter['title']} {title}" if title else chapter['title']
+                            f.write(f"{display_title}\n{content}\n\n")
 
-                    downloaded.add(chapter["id"])
-                    save_status(self.save_path, downloaded, self.book_id)
-                    single_chapter_success_count += 1
-
-                # 更新进度（批量下载成功数 + 单章下载成功数）
-                current_downloaded = already_downloaded + batch_success_count + single_chapter_success_count
-                progress = int(current_downloaded / total_chapters * 100)
-                if self.progress_callback:
-                    self.progress_callback(progress)
-
-                time.sleep(CONFIG["request_rate_limit"])
+            # 报告最终失败的章节
+            if todo_chapters and self.status_callback:
+                self.status_callback(f"警告：{len(todo_chapters)} 个章节在 {max_attempts} 次重试后仍然失败")
 
             # 计算总成功数
             total_success_count = batch_success_count + single_chapter_success_count
