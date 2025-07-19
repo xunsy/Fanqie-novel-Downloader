@@ -1035,9 +1035,11 @@ def get_chapters_from_api(book_id, headers):
                     print(f"已对 {len(final_chapters)} 个章节进行智能排序矫正")
                     print("=" * 20)
 
-                # 更新章节索引以保持一致性
+                # 更新章节索引以保持一致性，并确保矫正后的标题能在下载过程中使用
                 for idx, chapter in enumerate(corrected_chapters):
                     chapter["index"] = idx
+                    # 添加矫正后的标题字段，用于下载过程中显示
+                    chapter["corrected_title"] = chapter["title"]
 
                 return corrected_chapters
 
@@ -1452,7 +1454,7 @@ def Run(book_id, save_path):
                             processed = process_chapter_content(content)
                             with lock:
                                 chapter_results[chap["index"]] = {
-                                    "title": chap["title"],
+                                    "title": chap.get('corrected_title') or chap["title"],
                                     "content": processed
                                 }
                                 downloaded.add(chap["id"])
@@ -1475,7 +1477,7 @@ def Run(book_id, save_path):
                 if content:
                     with lock:
                         chapter_results[chapter["index"]] = {
-                            "title": title or chapter["title"],
+                            "title": title or chapter.get('corrected_title') or chapter["title"],
                             "content": content
                         }
                         downloaded.add(chapter["id"])
@@ -1803,7 +1805,7 @@ class GUIdownloader:
                             processed = process_chapter_content(content)
                             with lock:
                                 chapter_results[chap["index"]] = {
-                                    "base_title": chap["title"],
+                                    "base_title": chap.get('corrected_title') or chap["title"],
                                     "api_title": "",
                                     "content": processed
                                 }
@@ -2031,10 +2033,12 @@ class GUIdownloader:
                                         retry_count = chapter_context_map[chapter_id]["retry_count"]
 
                                         all_single_results[original_index] = (original_chapter, title, content)
-                                        print(f"批量下载成功：第{original_index+1}章 {chapter['title']} (重试{retry_count}次)")
+                                        display_title = chapter.get('corrected_title') or chapter['title']
+                                        print(f"批量下载成功：第{original_index+1}章 {display_title} (重试{retry_count}次)")
                                     else:
                                         all_single_results[chapter["index"]] = (chapter, title, content)
-                                        print(f"批量下载成功：第{chapter['index']+1}章 {chapter['title']}")
+                                        display_title = chapter.get('corrected_title') or chapter['title']
+                                        print(f"批量下载成功：第{chapter['index']+1}章 {display_title}")
 
                                     downloaded.add(chapter["id"])
                                     save_status(self.save_path, downloaded, self.book_id)
@@ -2043,7 +2047,9 @@ class GUIdownloader:
 
                                     if self.status_callback:
                                         current_pos = already_downloaded + batch_success_count + single_chapter_success_count
-                                        self.status_callback(f"已下载: {title or chapter['title']} ({current_pos}/{total_chapters})")
+                                        # 优先使用矫正后的标题，然后是API返回的标题，最后是原始标题
+                                        display_title = title or chapter.get('corrected_title') or chapter['title']
+                                        self.status_callback(f"已下载: {display_title} ({current_pos}/{total_chapters})")
                                     if self.progress_callback:
                                         progress = int(current_pos / total_chapters * 100)
                                         self.progress_callback(progress)
@@ -2055,7 +2061,8 @@ class GUIdownloader:
                                         failed_chapters_this_round.append(failed_chapter)
                                     else:
                                         failed_chapters_this_round.append(chapter)
-                                    print(f"章节 {chapter_id} (第{chapter['index']+1}章: {chapter['title']}) 内容为空")
+                                    display_title = chapter.get('corrected_title') or chapter['title']
+                                    print(f"章节 {chapter_id} (第{chapter['index']+1}章: {display_title}) 内容为空")
                             else:
                                 # 批量结果中没有这个章节，保持原始顺序信息并标记为失败
                                 if chapter_id in chapter_context_map:
@@ -2064,7 +2071,8 @@ class GUIdownloader:
                                     failed_chapters_this_round.append(failed_chapter)
                                 else:
                                     failed_chapters_this_round.append(chapter)
-                                print(f"章节 {chapter_id} (第{chapter['index']+1}章: {chapter['title']}) 不在批量结果中")
+                                display_title = chapter.get('corrected_title') or chapter['title']
+                                print(f"章节 {chapter_id} (第{chapter['index']+1}章: {display_title}) 不在批量结果中")
 
                         # 记录批次完成统计
                         print(f"[批次 {batch_num}] 完成统计: 成功={successful_in_batch}/{len(batch_chapters)}, 失败={len(batch_chapters)-successful_in_batch}")
@@ -2136,7 +2144,7 @@ class GUIdownloader:
                     # 确保即使在重试后，结果也被正确地放入主容器
                     if idx not in chapter_results:
                         chapter_results[idx] = {
-                            "base_title": chapter["title"],
+                            "base_title": chapter.get('corrected_title') or chapter["title"],
                             "api_title": title,
                             "content": content
                         }
