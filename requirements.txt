@@ -1,8 +1,10 @@
 # 番茄小说下载器依赖包列表
+# 适用于开发环境和CI/CD环境
 
 # GUI界面相关
 customtkinter>=5.2.0
-# tkinter是Python标准库，不需要通过pip安装
+# 注意：tkinter是Python标准库，不需要通过pip安装
+# 在CI环境中，tkinter通过系统包管理器安装
 
 # 网络请求相关
 requests>=2.31.0
