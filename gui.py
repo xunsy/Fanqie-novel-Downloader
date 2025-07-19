@@ -85,6 +85,9 @@ class NovelDownloaderGUI(ctk.CTk):
 
         # 在UI设置完成后再应用响应式设置
         self.after(100, self._apply_initial_responsive_settings)
+        
+        # 初始化模式状态显示
+        self.after(150, self._update_mode_status_display)
 
     def _setup_responsive_sizing(self):
         """设置响应式窗口大小"""
@@ -198,6 +201,174 @@ class NovelDownloaderGUI(ctk.CTk):
         CONFIG["request"]["download_mode"] = self.download_mode_var.get()
         save_user_config(CONFIG)
         print(f"下载模式已保存: {self.download_mode_var.get()}")
+    
+    def _on_download_mode_changed(self):
+        """处理下载模式变更"""
+        self._save_download_mode()
+        self._update_mode_status_display()
+    
+    def _update_mode_status_display(self):
+        """更新下载模式状态显示"""
+        try:
+            current_mode = self.download_mode_var.get()
+            
+            if current_mode == "single":  # rabbits0209模式
+                enable_limit = CONFIG.get("request", {}).get("rabbits0209_enable_limit", True)
+                max_chapters = CONFIG.get("request", {}).get("rabbits0209_max_chapters", 30)
+                
+                if enable_limit:
+                    status_text = f"(限制: {max_chapters}章/批)"
+                    self.mode_status_label.configure(text=status_text, text_color=self.colors["warning"])
+                    # 更新专用状态标签
+                    self.rabbits0209_status_label.configure(text=f"📊 {max_chapters}章", text_color=self.colors["accent"])
+                else:
+                    status_text = "(无限制)"
+                    self.mode_status_label.configure(text=status_text, text_color=self.colors["text_secondary"])
+                    self.rabbits0209_status_label.configure(text="📊 无限制", text_color=self.colors["text_secondary"])
+            else:  # Dlmily模式
+                self.mode_status_label.configure(text="", text_color=self.colors["text_secondary"])
+                self.rabbits0209_status_label.configure(text="", text_color=self.colors["text_secondary"])
+                
+        except Exception as e:
+            print(f"更新模式状态显示时出错: {e}")
+            self.mode_status_label.configure(text="", text_color=self.colors["text_secondary"])
+    
+    def _check_chapter_limit_before_download(self, book_id):
+        """在下载前检查章节限制并显示警告"""
+        try:
+            # 获取章节限制配置
+            enable_limit = CONFIG.get("request", {}).get("rabbits0209_enable_limit", True)
+            max_chapters = CONFIG.get("request", {}).get("rabbits0209_max_chapters", 30)
+            
+            if not enable_limit:
+                return True  # 未启用限制，直接允许下载
+            
+            # 获取章节信息
+            self.log("正在获取章节信息...")
+            try:
+                from downloader import get_headers, get_chapters_from_api
+                headers = get_headers()
+                chapters = get_chapters_from_api(book_id, headers)
+                
+                if not chapters:
+                    self.log("无法获取章节信息，将继续下载")
+                    return True
+                
+                chapter_count = len(chapters)
+                self.log(f"检测到 {chapter_count} 个章节")
+                
+                # 检查是否超过限制
+                if chapter_count > max_chapters:
+                    # 计算分批数量
+                    batch_count = (chapter_count + max_chapters - 1) // max_chapters
+                    
+                    # 显示警告对话框
+                    warning_msg = f"""检测到章节数超过rabbits0209模式限制：
+
+📊 章节统计：
+• 总章节数：{chapter_count} 章
+• 当前限制：{max_chapters} 章/批
+• 需要分批：{batch_count} 批
+
+⚠️ 分批下载计划：
+"""
+                    
+                    # 添加分批详情
+                    for i in range(batch_count):
+                        start_idx = i * max_chapters + 1
+                        end_idx = min((i + 1) * max_chapters, chapter_count)
+                        warning_msg += f"• 第 {i+1} 批：第 {start_idx}-{end_idx} 章 ({end_idx-start_idx+1} 章)\n"
+                    
+                    warning_msg += f"""
+💡 提示：
+• 分批下载可以提高稳定性
+• 每批之间会有短暂间隔
+• 可在设置中调整章节限制
+
+是否继续下载？"""
+                    
+                    # 显示确认对话框
+                    result = messagebox.askyesno(
+                        "章节数量超限警告", 
+                        warning_msg,
+                        parent=self
+                    )
+                    
+                    if result:
+                        self.log(f"用户确认分批下载：{batch_count} 批，每批最多 {max_chapters} 章")
+                        return True
+                    else:
+                        self.log("用户取消了下载")
+                        return False
+                else:
+                    self.log(f"章节数({chapter_count})在限制范围内，开始下载")
+                    return True
+                    
+            except Exception as e:
+                self.log(f"获取章节信息时出错: {e}，将继续下载")
+                return True
+                
+        except Exception as e:
+            self.log(f"检查章节限制时出错: {e}，将继续下载")
+            return True
+    
+    def _on_rabbits0209_setting_changed(self):
+        """处理rabbits0209设置变更"""
+        try:
+            # 实时更新模式状态显示
+            self._update_mode_status_display()
+        except Exception as e:
+            print(f"处理rabbits0209设置变更时出错: {e}")
+    
+    def _on_rabbits0209_slider_changed(self, value, label):
+        """处理rabbits0209滑块变更"""
+        try:
+            # 更新标签显示
+            label.configure(text=str(int(value)))
+            # 实时更新模式状态显示
+            self._update_mode_status_display()
+        except Exception as e:
+            print(f"处理rabbits0209滑块变更时出错: {e}")
+
+    def _on_limit_enable_changed(self):
+        """处理章节限制启用/禁用状态变化"""
+        try:
+            is_enabled = self.rabbits0209_enable_limit_var.get()
+            
+            # 更新滑块和标签的状态
+            if hasattr(self, 'limit_slider'):
+                if is_enabled:
+                    self.limit_slider.configure(state="normal")
+                    self.limit_value_label.configure(text_color=self.colors["accent"])
+                    self.limit_desc.configure(text="💡 提示：限制rabbits0209模式单次下载的最大章节数，超过此数量将自动分批下载")
+                else:
+                    self.limit_slider.configure(state="disabled")
+                    self.limit_value_label.configure(text_color=self.colors["text_secondary"])
+                    self.limit_desc.configure(text="💡 提示：章节限制已禁用，将使用配置的批量大小进行下载")
+            
+            # 更新状态显示
+            self._update_rabbits0209_status_display()
+            
+        except Exception as e:
+            print(f"处理章节限制启用状态变化时出错: {e}")
+
+    def _update_rabbits0209_status_display(self):
+        """更新rabbits0209模式的状态显示"""
+        try:
+            if hasattr(self, 'rabbits0209_status_label'):
+                is_enabled = self.rabbits0209_enable_limit_var.get()
+                max_chapters = self.rabbits0209_max_chapters_var.get()
+                
+                if is_enabled:
+                    status_text = f"📊 章节限制: {max_chapters}章"
+                    text_color = self.colors["accent"]
+                else:
+                    status_text = "📊 章节限制: 已禁用"
+                    text_color = self.colors["text_secondary"]
+                
+                self.rabbits0209_status_label.configure(text=status_text, text_color=text_color)
+        except Exception as e:
+            print(f"更新rabbits0209状态显示时出错: {e}")
 
     def _ensure_components_visible(self):
         """确保所有组件都在可见区域内"""
@@ -377,7 +548,25 @@ class NovelDownloaderGUI(ctk.CTk):
         mode_label = ctk.CTkLabel(mode_frame, text="⚙️ 下载模式:", anchor="w", width=80, font=ctk.CTkFont(size=12, weight="bold"), text_color=self.colors["text"])
         mode_label.pack(side="left")
         ctk.CTkRadioButton(mode_frame, text="Dlmily", variable=self.download_mode_var, value="batch", command=self._save_download_mode).pack(side="left", padx=5)
-        ctk.CTkRadioButton(mode_frame, text="rabbits0209", variable=self.download_mode_var, value="single", command=self._save_download_mode).pack(side="left", padx=5)
+        ctk.CTkRadioButton(mode_frame, text="rabbits0209", variable=self.download_mode_var, value="single", command=self._on_download_mode_changed).pack(side="left", padx=5)
+        
+        # 章节限制状态显示
+        self.mode_status_label = ctk.CTkLabel(
+            mode_frame,
+            text="",
+            font=ctk.CTkFont(size=9),
+            text_color=self.colors["text_secondary"]
+        )
+        self.mode_status_label.pack(side="left", padx=(10, 0))
+
+        # rabbits0209专用状态显示
+        self.rabbits0209_status_label = ctk.CTkLabel(
+            mode_frame,
+            text="",
+            font=ctk.CTkFont(size=9, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        self.rabbits0209_status_label.pack(side="left", padx=(5, 0))
 
         # 路径状态指示器
         self.path_status_label = ctk.CTkLabel(
@@ -591,33 +780,50 @@ class NovelDownloaderGUI(ctk.CTk):
         # 页面标题
         page_title = ctk.CTkLabel(
             perf_page,
-            text="⚡ 性能优化设置",
+            text="⚡ 高级性能设置",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=self.colors["accent"]
         )
         page_title.pack(anchor="w", padx=15, pady=(15, 20))
 
-        # 性能设置区域
-        perf_frame = ctk.CTkFrame(
+        # 页面说明
+        page_desc = ctk.CTkLabel(
+            perf_page,
+            text="💡 调整这些设置可以优化下载性能，但请根据网络环境谨慎调整",
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text_secondary"]
+        )
+        page_desc.pack(anchor="w", padx=15, pady=(0, 15))
+
+        # 下载性能设置区域
+        download_frame = ctk.CTkFrame(
             perf_page,
             corner_radius=8,
             border_width=1,
             border_color=self.colors["secondary"],
-            fg_color=self.colors["background"]
+            fg_color=self.colors["surface"]
         )
-        perf_frame.pack(fill="x", padx=15, pady=(0, 15))
+        download_frame.pack(fill="x", padx=15, pady=(0, 15))
 
-        # 最大并发下载数
-        workers_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
-        workers_frame.pack(fill="x", padx=15, pady=15)
+        download_title = ctk.CTkLabel(
+            download_frame,
+            text="🚀 下载性能设置",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        download_title.pack(anchor="w", padx=15, pady=(15, 10))
+
+        # 并发下载数设置
+        workers_frame = ctk.CTkFrame(download_frame, fg_color="transparent")
+        workers_frame.pack(fill="x", padx=15, pady=(0, 10))
         workers_frame.grid_columnconfigure(1, weight=1)
 
         workers_label = ctk.CTkLabel(
             workers_frame,
-            text="🔄 并发下载数:",
+            text="🔄 并发下载线程数:",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=self.colors["text"],
-            width=100
+            width=140
         )
         workers_label.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
 
@@ -640,31 +846,134 @@ class NovelDownloaderGUI(ctk.CTk):
             textvariable=self.workers_var,
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=self.colors["accent"],
-            width=30
+            width=40
         )
         workers_value_label.grid(row=0, column=2, padx=(10, 0), pady=5)
-        workers_slider.configure(command=lambda v: workers_value_label.configure(text=str(int(v))))
+        workers_slider.configure(command=lambda v: workers_value_label.configure(text=f"{int(v)} 线程"))
 
-        # 添加说明文字
         workers_desc = ctk.CTkLabel(
             workers_frame,
-            text="💡 提示：并发数越高下载越快，但会增加服务器负载",
+            text="💡 建议值：1-3线程（网络较慢），4-6线程（网络正常），7-10线程（网络很快）",
             font=ctk.CTkFont(size=9),
             text_color=self.colors["text_secondary"]
         )
         workers_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
 
+        # 批量下载设置
+        batch_frame = ctk.CTkFrame(download_frame, fg_color="transparent")
+        batch_frame.pack(fill="x", padx=15, pady=(0, 10))
+        batch_frame.grid_columnconfigure(1, weight=1)
+
+        batch_label = ctk.CTkLabel(
+            batch_frame,
+            text="📦 批量下载大小:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=self.colors["text"],
+            width=140
+        )
+        batch_label.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
+
+        self.batch_size_var = tk.IntVar(value=CONFIG["request"].get("single_batch_size", 30))
+        batch_slider = ctk.CTkSlider(
+            batch_frame,
+            from_=10,
+            to=290,
+            number_of_steps=14,
+            variable=self.batch_size_var,
+            progress_color=self.colors["warning"],
+            button_color=self.colors["accent"],
+            button_hover_color=self.colors["secondary"],
+            height=20
+        )
+        batch_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        batch_value_label = ctk.CTkLabel(
+            batch_frame,
+            textvariable=self.batch_size_var,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=self.colors["warning"],
+            width=40
+        )
+        batch_value_label.grid(row=0, column=2, padx=(10, 0), pady=5)
+        batch_slider.configure(command=lambda v: batch_value_label.configure(text=f"{int(v)} 章节"))
+
+        batch_desc = ctk.CTkLabel(
+            batch_frame,
+            text="💡 批量下载章节数：rabbits0209最大30章，Dlmity最大290章，推荐值：30-100章节",
+            font=ctk.CTkFont(size=9),
+            text_color=self.colors["text_secondary"]
+        )
+        batch_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
+
+        # 智能批量大小建议
+        smart_batch_frame = ctk.CTkFrame(batch_frame, fg_color="transparent")
+        smart_batch_frame.grid(row=2, column=0, columnspan=3, padx=0, pady=(0, 10), sticky="ew")
+
+        smart_30_btn = ctk.CTkButton(
+            smart_batch_frame,
+            text="30章(rabbits0209)",
+            width=120,
+            height=25,
+            command=lambda: self.batch_size_var.set(30),
+            font=ctk.CTkFont(size=9),
+            fg_color=self.colors["secondary"],
+            hover_color=self.colors["primary"]
+        )
+        smart_30_btn.pack(side="left", padx=(0, 5))
+
+        smart_100_btn = ctk.CTkButton(
+            smart_batch_frame,
+            text="100章(推荐)",
+            width=100,
+            height=25,
+            command=lambda: self.batch_size_var.set(100),
+            font=ctk.CTkFont(size=9),
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["primary"]
+        )
+        smart_100_btn.pack(side="left", padx=(0, 5))
+
+        smart_290_btn = ctk.CTkButton(
+            smart_batch_frame,
+            text="290章(Dlmity最大)",
+            width=120,
+            height=25,
+            command=lambda: self.batch_size_var.set(290),
+            font=ctk.CTkFont(size=9),
+            fg_color=self.colors["warning"],
+            hover_color=self.colors["primary"]
+        )
+        smart_290_btn.pack(side="left")
+
+        # 网络设置区域
+        network_frame = ctk.CTkFrame(
+            perf_page,
+            corner_radius=8,
+            border_width=1,
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["surface"]
+        )
+        network_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        network_title = ctk.CTkLabel(
+            network_frame,
+            text="🌐 网络连接设置",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        network_title.pack(anchor="w", padx=15, pady=(15, 10))
+
         # 请求超时时间
-        timeout_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
-        timeout_frame.pack(fill="x", padx=15, pady=(0, 15))
+        timeout_frame = ctk.CTkFrame(network_frame, fg_color="transparent")
+        timeout_frame.pack(fill="x", padx=15, pady=(0, 10))
         timeout_frame.grid_columnconfigure(1, weight=1)
 
         timeout_label = ctk.CTkLabel(
             timeout_frame,
-            text="⏱️ 请求超时:",
+            text="⏱️ 请求超时时间:",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=self.colors["text"],
-            width=100
+            width=140
         )
         timeout_label.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
 
@@ -672,8 +981,8 @@ class NovelDownloaderGUI(ctk.CTk):
         timeout_slider = ctk.CTkSlider(
             timeout_frame,
             from_=5,
-            to=60,
-            number_of_steps=11,
+            to=30,
+            number_of_steps=5,
             variable=self.timeout_var,
             progress_color=self.colors["accent"],
             button_color=self.colors["success"],
@@ -687,79 +996,126 @@ class NovelDownloaderGUI(ctk.CTk):
             textvariable=self.timeout_var,
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=self.colors["accent"],
-            width=30
+            width=40
         )
         timeout_value_label.grid(row=0, column=2, padx=(10, 0), pady=5)
-        timeout_slider.configure(command=lambda v: timeout_value_label.configure(text=f"{int(v)}s"))
+        timeout_slider.configure(command=lambda v: timeout_value_label.configure(text=f"{int(v)} 秒"))
 
-        # 添加说明文字
         timeout_desc = ctk.CTkLabel(
             timeout_frame,
-            text="💡 提示：超时时间过短可能导致下载失败，过长会影响响应速度",
+            text="💡 建议值：5-10秒（网络快），10-15秒（网络一般），15-30秒（网络慢）",
             font=ctk.CTkFont(size=9),
             text_color=self.colors["text_secondary"]
         )
-        timeout_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
+        timeout_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 15), sticky="w")
 
-        # 单章批量大小
-        single_batch_frame = ctk.CTkFrame(perf_frame, fg_color="transparent")
-        single_batch_frame.pack(fill="x", padx=15, pady=(0, 15))
-        single_batch_frame.grid_columnconfigure(1, weight=1)
+        # 重试设置
+        retry_frame = ctk.CTkFrame(network_frame, fg_color="transparent")
+        retry_frame.pack(fill="x", padx=15, pady=(0, 15))
+        retry_frame.grid_columnconfigure(1, weight=1)
 
-        single_batch_label = ctk.CTkLabel(
-            single_batch_frame,
-            text="📦 rabbits0209批量:",
+        retry_label = ctk.CTkLabel(
+            retry_frame,
+            text="🔄 失败重试次数:",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=self.colors["text"],
-            width=100
+            width=140
         )
-        single_batch_label.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
+        retry_label.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
 
-        self.single_batch_var = tk.IntVar(value=CONFIG.get("request", {}).get("single_batch_size", 30))
-        single_batch_slider = ctk.CTkSlider(
-            single_batch_frame,
-            from_=5,
-            to=30,
-            number_of_steps=25,
-            variable=self.single_batch_var,
-            progress_color=self.colors["accent"],
-            button_color=self.colors["success"],
-            button_hover_color=self.colors["primary"],
+        self.retry_var = tk.IntVar(value=CONFIG.get("request", {}).get("max_retries", 3))
+        retry_slider = ctk.CTkSlider(
+            retry_frame,
+            from_=1,
+            to=5,
+            number_of_steps=4,
+            variable=self.retry_var,
+            progress_color=self.colors["warning"],
+            button_color=self.colors["accent"],
+            button_hover_color=self.colors["secondary"],
             height=20
         )
-        single_batch_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        retry_slider.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-        single_batch_value_label = ctk.CTkLabel(
-            single_batch_frame,
-            textvariable=self.single_batch_var,
+        retry_value_label = ctk.CTkLabel(
+            retry_frame,
+            textvariable=self.retry_var,
             font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=self.colors["accent"],
-            width=30
+            text_color=self.colors["warning"],
+            width=40
         )
-        single_batch_value_label.grid(row=0, column=2, padx=(10, 0), pady=5)
-        single_batch_slider.configure(command=lambda v: single_batch_value_label.configure(text=str(int(v))))
+        retry_value_label.grid(row=0, column=2, padx=(10, 0), pady=5)
+        retry_slider.configure(command=lambda v: retry_value_label.configure(text=f"{int(v)} 次"))
 
-        # 添加说明文字
-        single_batch_desc = ctk.CTkLabel(
-            single_batch_frame,
-            text="💡 提示：rabbits0209模式每次批量请求的章节数，最大30章，数值越大效率越高",
+        retry_desc = ctk.CTkLabel(
+            retry_frame,
+            text="💡 下载失败时的重试次数，建议值：3次（平衡效率与成功率）",
             font=ctk.CTkFont(size=9),
             text_color=self.colors["text_secondary"]
         )
-        single_batch_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
+        retry_desc.grid(row=1, column=0, columnspan=3, padx=0, pady=(0, 5), sticky="w")
 
-        # 保存按钮（放在每个页面的底部）
-        save_button = ctk.CTkButton(
+        # 高级优化设置区域
+        advanced_frame = ctk.CTkFrame(
             perf_page,
-            text="💾 保存所有设置",
-            command=self._save_integrated_settings,
-            height=40,
             corner_radius=8,
-            fg_color=self.colors["success"],
-            hover_color="#00cc77",
-            font=ctk.CTkFont(size=12, weight="bold")
+            border_width=1,
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["surface"]
         )
-        save_button.pack(fill="x", padx=15, pady=20)
+        advanced_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        advanced_title = ctk.CTkLabel(
+            advanced_frame,
+            text="🔧 高级优化选项",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        advanced_title.pack(anchor="w", padx=15, pady=(15, 10))
+
+        # 启用高性能模式
+        self.high_performance_var = ctk.BooleanVar(value=CONFIG.get("request", {}).get("high_performance_mode", False))
+        high_perf_checkbox = ctk.CTkCheckBox(
+            advanced_frame,
+            text="🚀 启用高性能模式（增加并发，适合网络环境良好的用户）",
+            variable=self.high_performance_var,
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text"]
+        )
+        high_perf_checkbox.pack(anchor="w", padx=15, pady=(0, 10))
+
+        # 智能重试
+        self.smart_retry_var = ctk.BooleanVar(value=CONFIG.get("request", {}).get("smart_retry", True))
+        smart_retry_checkbox = ctk.CTkCheckBox(
+            advanced_frame,
+            text="🧠 智能重试（失败时自动调整参数重试）",
+            variable=self.smart_retry_var,
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text"]
+        )
+        smart_retry_checkbox.pack(anchor="w", padx=15, pady=(0, 5))
+
+        # 立即重试
+        self.immediate_retry_var = ctk.BooleanVar(value=CONFIG.get("request", {}).get("immediate_retry", True))
+        immediate_retry_checkbox = ctk.CTkCheckBox(
+            advanced_frame,
+            text="⚡ 立即重试（批次失败后立即重试，而不是等到最后）",
+            variable=self.immediate_retry_var,
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text"]
+        )
+        immediate_retry_checkbox.pack(anchor="w", padx=15, pady=(0, 15))
+
+        # 性能提示
+        perf_tip = ctk.CTkLabel(
+            advanced_frame,
+            text="💡 提示：高性能模式会增加服务器负载，请在网络环境良好时使用",
+            font=ctk.CTkFont(size=9),
+            text_color=self.colors["text_secondary"]
+        )
+        perf_tip.pack(anchor="w", padx=15, pady=(0, 15))
+
+
 
     def _create_output_page(self):
         """创建输出设置页面"""
@@ -854,6 +1210,71 @@ class NovelDownloaderGUI(ctk.CTk):
             text_color=self.colors["text_secondary"]
         )
         naming_desc.pack(anchor="w", pady=(0, 5))
+
+        # 章节矫正设置区域
+        correction_frame = ctk.CTkFrame(
+            output_page,
+            corner_radius=8,
+            border_width=1,
+            border_color=self.colors["secondary"],
+            fg_color=self.colors["surface"]
+        )
+        correction_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        correction_title = ctk.CTkLabel(
+            correction_frame,
+            text="🔧 章节矫正设置",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["accent"]
+        )
+        correction_title.pack(anchor="w", padx=15, pady=(15, 10))
+
+        # 启用章节矫正
+        self.chapter_correction_enabled_var = ctk.BooleanVar(
+            value=CONFIG.get("chapter_correction", {}).get("enabled", True)
+        )
+        correction_enabled_checkbox = ctk.CTkCheckBox(
+            correction_frame,
+            text="启用智能章节矫正",
+            variable=self.chapter_correction_enabled_var,
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text"]
+        )
+        correction_enabled_checkbox.pack(anchor="w", padx=15, pady=(0, 5))
+
+        # 自动矫正
+        self.auto_correct_var = ctk.BooleanVar(
+            value=CONFIG.get("chapter_correction", {}).get("auto_correct", True)
+        )
+        auto_correct_checkbox = ctk.CTkCheckBox(
+            correction_frame,
+            text="自动矫正章节顺序",
+            variable=self.auto_correct_var,
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text"]
+        )
+        auto_correct_checkbox.pack(anchor="w", padx=15, pady=(0, 5))
+
+        # 显示矫正报告
+        self.show_correction_report_var = ctk.BooleanVar(
+            value=CONFIG.get("chapter_correction", {}).get("show_correction_report", True)
+        )
+        show_report_checkbox = ctk.CTkCheckBox(
+            correction_frame,
+            text="显示章节矫正报告",
+            variable=self.show_correction_report_var,
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text"]
+        )
+        show_report_checkbox.pack(anchor="w", padx=15, pady=(0, 10))
+
+        correction_desc = ctk.CTkLabel(
+            correction_frame,
+            text="💡 智能识别章节标题格式（第X章、Chapter X等），自动排序矫正乱序问题",
+            font=ctk.CTkFont(size=9),
+            text_color=self.colors["text_secondary"]
+        )
+        correction_desc.pack(anchor="w", padx=15, pady=(0, 15))
 
         # 保存按钮（放在每个页面的底部）
         save_button = ctk.CTkButton(
@@ -1073,12 +1494,23 @@ class NovelDownloaderGUI(ctk.CTk):
             # 保存性能设置
             CONFIG["request"]["max_workers"] = self.workers_var.get()
             CONFIG["request"]["timeout"] = self.timeout_var.get()
-            CONFIG["request"]["single_batch_size"] = self.single_batch_var.get()
+            CONFIG["request"]["single_batch_size"] = self.batch_size_var.get()
+            CONFIG["request"]["max_retries"] = self.retry_var.get()
+            CONFIG["request"]["high_performance_mode"] = self.high_performance_var.get()
+            CONFIG["request"]["smart_retry"] = self.smart_retry_var.get()
+            CONFIG["request"]["immediate_retry"] = self.immediate_retry_var.get()
 
             # 保存输出设置
             if "output" not in CONFIG:
                 CONFIG["output"] = {}
             CONFIG["output"]["generate_epub_when_txt_selected"] = self.generate_epub_var.get()
+
+            # 保存章节矫正设置
+            if "chapter_correction" not in CONFIG:
+                CONFIG["chapter_correction"] = {}
+            CONFIG["chapter_correction"]["enabled"] = self.chapter_correction_enabled_var.get()
+            CONFIG["chapter_correction"]["auto_correct"] = self.auto_correct_var.get()
+            CONFIG["chapter_correction"]["show_correction_report"] = self.show_correction_report_var.get()
 
             # 保存Tor设置
             if "tor" not in CONFIG:
@@ -1099,6 +1531,9 @@ class NovelDownloaderGUI(ctk.CTk):
 
             # 更新Tor状态显示
             self.update_tor_status()
+            
+            # 更新模式状态显示
+            self._update_mode_status_display()
 
             self.log("✅ 设置已保存", "success")
 
@@ -1852,6 +2287,15 @@ class NovelDownloaderGUI(ctk.CTk):
         self.status_label.configure(text="准备下载...")
 
         self.log(f"准备下载 ID: {book_id_to_download}")
+
+        # 检查rabbits0209模式的章节限制
+        if self.download_mode_var.get() == "single":  # rabbits0209模式
+            if not self._check_chapter_limit_before_download(book_id_to_download):
+                # 用户取消了下载
+                self.download_button.configure(state="normal")
+                self.stop_download_button.configure(state="disabled")
+                self.is_downloading = False
+                return
 
         # 获取输出格式设置
         output_format = self.get_output_format()

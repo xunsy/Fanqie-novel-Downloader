@@ -29,6 +29,14 @@ import base64
 import gzip
 from urllib.parse import urlencode, quote
 
+# 导入章节矫正模块
+try:
+    from chapter_corrector import correct_chapters, analyze_chapter_title
+    CHAPTER_CORRECTION_AVAILABLE = True
+except ImportError:
+    print("警告: 章节矫正模块未找到，将跳过章节矫正功能")
+    CHAPTER_CORRECTION_AVAILABLE = False
+
 # 禁用SSL证书验证警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
@@ -298,19 +306,23 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             'book_type': None
         }
         
-        # 1. 先通过现有的get_book_info获取基本信息
+        # 1. 先通过增强的get_book_info获取完整信息
         try:
             headers = get_headers()
-            basic_name, basic_author, basic_description = get_book_info(book_id, headers)
-            
-            # 使用基本信息作为基础
-            if basic_name:
-                enhanced_info['book_name'] = basic_name
-            if basic_author:
-                enhanced_info['author'] = basic_author
-            if basic_description:
-                enhanced_info['description'] = basic_description
-                
+            book_info = get_book_info(book_id, headers)
+
+            # 使用官网信息作为基础
+            if book_info:
+                enhanced_info['book_name'] = book_info.get('name')
+                enhanced_info['author'] = book_info.get('author')
+                enhanced_info['description'] = book_info.get('description')
+                enhanced_info['thumb_url'] = book_info.get('cover_url')
+                enhanced_info['creation_status'] = book_info.get('status')
+                enhanced_info['category_tags'] = book_info.get('tags', [])
+                # 添加额外信息
+                enhanced_info['word_count'] = book_info.get('word_count')
+                enhanced_info['last_update'] = book_info.get('last_update')
+
         except Exception as e:
             print(f"获取基本书籍信息失败: {str(e)}")
         
@@ -322,14 +334,12 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             if search_result and search_result.get('code') == 0:
                 book_data = search_result.get('data', {}).get('book_data', [])
                 
-                # 查找匹配的书籍（优先通过ID匹配，其次通过书名）
+                # 查找匹配的书籍（只通过ID匹配，确保是同一本书）
                 for book in book_data:
                     if book.get('book_id') == book_id:
                         search_info = book
                         break
-                    elif book.get('book_name') == enhanced_info['book_name']:
-                        search_info = book
-                        break
+                    # 移除按书名匹配，因为可能匹配到同名但不同作者的书
         
         # 3. 如果通过书名没找到，尝试通过作者搜索
         if not search_info and enhanced_info['author']:
@@ -338,36 +348,31 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
                 if search_result and search_result.get('code') == 0:
                     book_data = search_result.get('data', {}).get('book_data', [])
                     
-                    # 查找匹配的书籍
+                    # 查找匹配的书籍（只通过ID匹配）
                     for book in book_data:
                         if book.get('book_id') == book_id:
-                            search_info = book
-                            break
-                        elif (book.get('book_name') == enhanced_info['book_name'] and 
-                              book.get('author') == enhanced_info['author']):
                             search_info = book
                             break
             except Exception as e:
                 print(f"通过作者搜索失败: {str(e)}")
         
-        # 4. 智能合并信息：每个字段单独判断使用哪个来源的数据
+        # 4. 智能合并信息：优先使用官网信息，搜索API作为补充
         if search_info:
-            # 书名：优先使用搜索结果（通常更准确）
-            if search_info.get('book_name') and search_info['book_name'].strip():
+            # 书名：优先使用官网信息，如果官网没有才使用搜索结果
+            if not enhanced_info['book_name'] and search_info.get('book_name') and search_info['book_name'].strip():
                 enhanced_info['book_name'] = search_info['book_name']
-            
-            # 作者：优先使用搜索结果
-            if search_info.get('author') and search_info['author'].strip():
+
+            # 作者：优先使用官网信息，如果官网没有才使用搜索结果
+            if not enhanced_info['author'] and search_info.get('author') and search_info['author'].strip():
                 enhanced_info['author'] = search_info['author']
+
+            # 简介：只有当 HTML 解析不到或等于默认时才用 API 描述
+            search_desc = search_info.get('abstract', '').strip()
+            if (not enhanced_info['description'] or enhanced_info['description'] == '暂无简介') and search_desc:
+                enhanced_info['description'] = search_desc
             
-            # 简介：使用更长更详细的版本
-            search_desc = search_info.get('abstract', '')
-            if search_desc and search_desc.strip():
-                if not enhanced_info['description'] or len(search_desc) > len(enhanced_info['description']):
-                    enhanced_info['description'] = search_desc
-            
-            # 以下信息只有搜索API提供，直接使用
-            if search_info.get('thumb_url'):
+            # 封面：优先使用官网信息，如果官网没有才使用搜索结果
+            if not enhanced_info['thumb_url'] and search_info.get('thumb_url'):
                 enhanced_info['thumb_url'] = search_info['thumb_url']
             
             if search_info.get('read_count'):
@@ -376,7 +381,8 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             if search_info.get('creation_status') is not None:
                 enhanced_info['creation_status'] = search_info['creation_status']
             
-            if search_info.get('category_tags'):
+            # 分类标签：只有当 HTML 没解析到任何标签时才用 API
+            if not enhanced_info['category_tags'] and search_info.get('category_tags'):
                 enhanced_info['category_tags'] = search_info['category_tags']
             
             if search_info.get('genre') is not None:
@@ -486,6 +492,7 @@ def extract_chapters(soup):
         chapters.append({
             "id": a_tag['href'].split('/')[-1],
             "title": final_title,
+            "raw_title": raw_title,
             "url": f"https://fanqienovel.com{a_tag['href']}",
             "index": idx
         })
@@ -531,124 +538,326 @@ def batch_download_chapters(item_ids, headers):
         print(f"Dlmily下载异常！")
         return None
 
-def qwq_batch_download_chapters(item_ids, headers):
-    """rabbits0209模式批量下载章节内容"""
+def validate_chapter_mapping(item_ids, results):
+    """验证章节ID映射是否正确"""
+    if not results or not item_ids:
+        return False
+
+    # 检查所有请求的章节ID是否都在结果中
+    missing_ids = [chapter_id for chapter_id in item_ids if chapter_id not in results]
+    if missing_ids:
+        print(f"警告：以下章节ID在结果中缺失: {missing_ids}")
+
+    # 检查结果中是否有意外的章节ID
+    unexpected_ids = [chapter_id for chapter_id in results.keys() if chapter_id not in item_ids]
+    if unexpected_ids:
+        print(f"警告：结果中包含意外的章节ID: {unexpected_ids}")
+
+    return len(missing_ids) == 0
+
+def validate_chapter_integrity(chapter_results, total_chapters, chapters_info=None):
+    """验证章节完整性和连续性"""
+    if not chapter_results:
+        print("警告：没有章节结果需要验证")
+        return False, []
+
+    issues = []
+    downloaded_indices = set(chapter_results.keys())
+
+    # 1. 检查章节索引连续性
+    if downloaded_indices:
+        min_idx = min(downloaded_indices)
+        max_idx = max(downloaded_indices)
+
+        # 检查是否有中间章节缺失
+        missing_indices = []
+        for i in range(min_idx, max_idx + 1):
+            if i not in downloaded_indices:
+                missing_indices.append(i + 1)  # 转为人类可读的章节号
+
+        if missing_indices:
+            issue = f"检测到章节缺失，缺失章节号: {missing_indices}"
+            issues.append(issue)
+            print(f"完整性检查 - {issue}")
+
+    # 2. 检查章节内容完整性
+    empty_content_chapters = []
+    for idx, result in chapter_results.items():
+        if not result.get("content", "").strip():
+            empty_content_chapters.append(idx + 1)
+
+    if empty_content_chapters:
+        issue = f"检测到空内容章节: 第{empty_content_chapters}章"
+        issues.append(issue)
+        print(f"完整性检查 - {issue}")
+
+    # 3. 检查章节标题合理性（如果提供了章节信息）
+    if chapters_info:
+        title_mismatch_chapters = []
+        for idx, result in chapter_results.items():
+            if idx < len(chapters_info):
+                expected_title = chapters_info[idx]["title"]
+                actual_title = result.get("title", "")
+
+                # 简单的标题匹配检查
+                if (expected_title and actual_title and
+                    expected_title not in actual_title and
+                    actual_title not in expected_title):
+                    title_mismatch_chapters.append({
+                        "chapter": idx + 1,
+                        "expected": expected_title,
+                        "actual": actual_title
+                    })
+
+        if title_mismatch_chapters:
+            issue = f"检测到标题不匹配章节: {len(title_mismatch_chapters)}个"
+            issues.append(issue)
+            print(f"完整性检查 - {issue}")
+            for mismatch in title_mismatch_chapters[:3]:  # 只显示前3个
+                print(f"  第{mismatch['chapter']}章: 期望'{mismatch['expected']}', 实际'{mismatch['actual']}'")
+
+    # 4. 检查总体完整性
+    completion_rate = len(downloaded_indices) / total_chapters if total_chapters > 0 else 0
+    if completion_rate < 0.95:  # 如果完成率低于95%
+        issue = f"章节完成率较低: {completion_rate:.1%} ({len(downloaded_indices)}/{total_chapters})"
+        issues.append(issue)
+        print(f"完整性检查 - {issue}")
+
+    is_valid = len(issues) == 0
+    if is_valid:
+        print(f"章节完整性检查通过: {len(downloaded_indices)}/{total_chapters} 章节，完成率 {completion_rate:.1%}")
+    else:
+        print(f"章节完整性检查发现 {len(issues)} 个问题")
+
+    return is_valid, issues
+
+def check_rabbits0209_limit(chapters, config=None):
+    """
+    检查rabbits0209模式下的章节限制
+    
+    Args:
+        chapters: 待下载的章节列表
+        config: 配置字典，如果为None则使用全局CONFIG
+        
+    Returns:
+        tuple: (is_over_limit, max_chapters, suggested_batches)
+            - is_over_limit: 是否超过限制
+            - max_chapters: 最大章节限制
+            - suggested_batches: 建议的批次数
+    """
     try:
-        # 构建qwq批量请求URL - 使用正确的批量下载格式
+        # 导入配置
+        if config is None:
+            from config import CONFIG
+            config = CONFIG
+        
+        # 获取rabbits0209配置
+        request_config = config.get("request", {})
+        enable_limit = request_config.get("rabbits0209_enable_limit", True)
+        max_chapters = request_config.get("rabbits0209_max_chapters", 30)
+        
+        # 如果未启用限制，返回不超限
+        if not enable_limit:
+            return False, max_chapters, 1
+        
+        chapter_count = len(chapters) if chapters else 0
+        
+        # 检查是否超过限制
+        is_over_limit = chapter_count > max_chapters
+        
+        # 计算建议的批次数
+        if is_over_limit:
+            suggested_batches = (chapter_count + max_chapters - 1) // max_chapters
+        else:
+            suggested_batches = 1
+        
+        return is_over_limit, max_chapters, suggested_batches
+        
+    except Exception as e:
+        print(f"警告: 检查rabbits0209章节限制时发生错误 {str(e)}")
+        # 发生错误时返回安全的默认值
+        return False, 30, 1
+
+def create_limited_batches(chapters, config=None):
+    """
+    根据rabbits0209章节限制创建批次
+    
+    Args:
+        chapters: 待下载的章节列表
+        config: 配置字典，如果为None则使用全局CONFIG
+        
+    Returns:
+        list: 分批后的章节列表，每个元素是一个章节批次
+    """
+    try:
+        # 导入配置
+        if config is None:
+            from config import CONFIG
+            config = CONFIG
+        
+        # 获取rabbits0209配置
+        request_config = config.get("request", {})
+        enable_limit = request_config.get("rabbits0209_enable_limit", True)
+        max_chapters = request_config.get("rabbits0209_max_chapters", 30)
+        
+        if not chapters:
+            return []
+        
+        # 如果未启用限制，返回单个批次
+        if not enable_limit:
+            return [chapters]
+        
+        # 确保章节按索引排序
+        sorted_chapters = sorted(chapters, key=lambda x: x.get("index", 0))
+        
+        # 分批处理
+        batches = []
+        for i in range(0, len(sorted_chapters), max_chapters):
+            batch = sorted_chapters[i:i + max_chapters]
+            batches.append(batch)
+        
+        print(f"章节分批完成: 总计 {len(sorted_chapters)} 章节，分为 {len(batches)} 批，每批最多 {max_chapters} 章节")
+        
+        return batches
+        
+    except Exception as e:
+        print(f"警告: 创建章节批次时发生错误 {str(e)}")
+        # 发生错误时返回原始章节作为单个批次
+        return [chapters] if chapters else []
+
+def qwq_batch_download_chapters(item_ids, headers):
+    """rabbits0209模式批量下载章节内容，采用严格的ID验证，确保章节顺序正确"""
+    try:
+        # 1. 构建请求
         item_ids_str = ",".join(item_ids)
         url = f"https://qwq.tutuxka.top/api/index.php?api=content&item_ids={item_ids_str}&api_type=batch"
-
+        
         print(f"rabbits0209批量请求URL: {url}")
         print(f"请求章节数: {len(item_ids)}")
 
-        # 随机延迟
-        time.sleep(random.uniform(0.1, 0.5))
-
-        # 修改请求头，避免Brotli压缩问题
         qwq_headers = headers.copy()
-        qwq_headers['Accept-Encoding'] = 'gzip, deflate'  # 移除br压缩
+        qwq_headers['Accept-Encoding'] = 'gzip, deflate'
 
-        # 直接使用requests，不使用make_request以避免Tor相关问题
-        try:
-            response = requests.get(
-                url,
-                headers=qwq_headers,
-                timeout=CONFIG["request_timeout"],
-                verify=False
-            )
-        except Exception as e:
-            print(f"rabbits0209批量请求失败: {str(e)}")
+        # 2. 发送请求
+        response = requests.get(
+            url,
+            headers=qwq_headers,
+            timeout=CONFIG["request_timeout"],
+            verify=False
+        )
+        response.raise_for_status() # 抛出HTTP错误
+
+        # 3. 解析和严格验证响应
+        data = response.json()
+        
+        if isinstance(data, dict) and data.get("error"):
+            print(f"rabbits0209 API返回错误: {data.get('error')}")
             return None
 
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                print(f"rabbits0209批量下载成功，返回数据类型: {type(data)}")
+        results = {}
+        chapter_list = []
 
-                # 检查是否有错误信息
-                if isinstance(data, dict) and "error" in data:
-                    print(f"rabbits0209 API返回错误: {data.get('error')}")
-                    # 检查trace信息，可能包含具体的章节错误
-                    trace = data.get("trace", {})
-                    if isinstance(trace, dict) and "data" in trace:
-                        trace_data = trace["data"]
-                        print(f"错误详情: {trace_data}")
-                    return None
-
-                # rabbits0209 API返回格式处理
-                if isinstance(data, dict):
-                    results = {}
-
-                    # 检查是否是标准的API响应格式 {success: true, data: [...]}
-                    if "success" in data and "data" in data and data["success"]:
-                        chapter_list = data["data"]
-                        if isinstance(chapter_list, list):
-                            # 处理列表格式的章节数据
-                            for i, chapter_data in enumerate(chapter_list):
-                                if isinstance(chapter_data, dict) and "content" in chapter_data:
-                                    content = chapter_data.get("content", "")
-                                    if content:
-                                        processed_content = process_chapter_content(content)
-                                        # 使用对应的章节ID作为键
-                                        chapter_id = item_ids[i] if i < len(item_ids) else str(i)
-                                        results[chapter_id] = {
-                                            "content": processed_content,
-                                            "title": chapter_data.get("title", "")
-                                        }
-                                        print(f"成功处理章节 {chapter_id}: {chapter_data.get('title', '无标题')}")
-                                    else:
-                                        print(f"章节索引 {i} 内容为空")
-                                else:
-                                    print(f"章节索引 {i} 数据格式异常: {chapter_data}")
-                        else:
-                            print(f"data字段不是列表格式: {type(chapter_list)}")
-                    else:
-                        # 处理直接的章节字典格式
-                        for chapter_id, chapter_data in data.items():
-                            if isinstance(chapter_data, dict) and "content" in chapter_data:
-                                content = chapter_data.get("content", "")
-                                if content:
-                                    processed_content = process_chapter_content(content)
-                                    results[chapter_id] = {
-                                        "content": processed_content,
-                                        "title": chapter_data.get("title", "")
-                                    }
-                                else:
-                                    print(f"章节 {chapter_id} 内容为空")
-                            else:
-                                print(f"章节 {chapter_id} 数据格式异常: {chapter_data}")
-
-                    print(f"rabbits0209批量下载处理完成，成功章节数: {len(results)}")
-                    return results if results else None
-                elif isinstance(data, list):
-                    # 如果返回的是列表格式
-                    results = {}
-                    for i, chapter_data in enumerate(data):
-                        if isinstance(chapter_data, dict) and "content" in chapter_data:
-                            chapter_id = item_ids[i] if i < len(item_ids) else str(i)
-                            content = chapter_data.get("content", "")
-                            if content:
-                                processed_content = process_chapter_content(content)
-                                results[chapter_id] = {
-                                    "content": processed_content,
-                                    "title": chapter_data.get("title", "")
-                                }
-                    print(f"rabbits0209批量下载处理完成，成功章节数: {len(results)}")
-                    return results
-                else:
-                    print(f"rabbits0209批量下载返回格式异常: {type(data)}")
-                    return None
-            except json.JSONDecodeError as e:
-                print(f"rabbits0209批量下载JSON解析失败: {str(e)}")
-                print(f"响应内容: {response.text[:200]}...")
-                return None
+        # 统一处理不同格式的数据源，最终得到一个章节列表
+        if isinstance(data, dict) and data.get("success") and isinstance(data.get("data"), list):
+            chapter_list = data["data"]
+            print(f"处理标准API响应格式，包含 {len(chapter_list)} 个章节。")
+        elif isinstance(data, list):
+            chapter_list = data
+            print(f"处理直接列表响应格式，包含 {len(chapter_list)} 个章节。")
         else:
-            print(f"rabbits0209批量下载失败，状态码: {response.status_code}")
-            print(f"响应内容: {response.text[:200]}...")
+            print(f"警告：API返回了未知的或非列表格式的数据，批量下载失败。数据类型: {type(data)}")
+            return None # 未知格式，拒绝处理
+
+        # 4. 严格的ID匹配
+        if not chapter_list:
+            print("警告：API返回的章节列表为空，批量下载失败。")
             return None
 
+        # 检查返回的第一个项目是否包含'id'，这是关键的验证步骤
+        if not isinstance(chapter_list[0], dict):
+            print(f"警告：API返回的章节数据不是字典格式，实际类型: {type(chapter_list[0])}")
+            print("将自动降级为单章模式重试，以确保顺序正确。")
+            return None
+
+        # 调试：打印第一个章节的键名
+        first_chapter_keys = list(chapter_list[0].keys())
+        print(f"调试：第一个章节包含的字段: {first_chapter_keys}")
+
+        # 检查是否有ID字段（可能是不同的字段名）
+        id_field = None
+        possible_id_fields = ['id', 'item_id', 'chapter_id', 'chapterId', 'itemId']
+        for field in possible_id_fields:
+            if field in chapter_list[0]:
+                id_field = field
+                break
+
+        # 如果没有找到ID字段，但有content字段，尝试按顺序处理
+        if not id_field and 'content' in chapter_list[0]:
+            print("警告：API返回的数据缺少ID字段，但包含content，尝试按顺序处理...")
+            # 按请求顺序处理章节
+            for i, chapter_data in enumerate(chapter_list):
+                if i < len(item_ids) and isinstance(chapter_data, dict):
+                    chapter_id = item_ids[i]  # 使用请求的ID顺序
+                    content = chapter_data.get("content", "")
+                    title = chapter_data.get("title", "")
+
+                    if content and content.strip():  # 确保内容不为空
+                        processed_content = process_chapter_content(content)
+                        results[chapter_id] = {
+                            "content": processed_content,
+                            "title": title
+                        }
+                        print(f"  ✓ 处理章节 {i+1}/{len(chapter_list)}: {title[:30]}...")
+                    else:
+                        print(f"  ✗ 跳过空章节 {i+1}: {title}")
+
+            if results:
+                print(f"✅ 成功按顺序处理了 {len(results)}/{len(chapter_list)} 个章节")
+                return results
+            else:
+                print("❌ 按顺序处理失败，所有章节内容为空")
+                return None
+
+        if not id_field:
+            print("警告：API返回的章节数据中缺少ID字段，无法进行安全匹配，批量下载失败。")
+            print(f"尝试的字段名: {possible_id_fields}")
+            print("将自动降级为单章模式重试，以确保顺序正确。")
+            return None
+
+        # 遍历返回的章节，只接受ID在请求列表中的章节
+        matched_ids = set()
+        for chapter_data in chapter_list:
+            if not isinstance(chapter_data, dict): continue
+
+            chapter_id = str(chapter_data.get(id_field, ''))
+            content = chapter_data.get("content", "")
+
+            if chapter_id in item_ids and content:
+                processed_content = process_chapter_content(content)
+                results[chapter_id] = {
+                    "content": processed_content,
+                    "title": chapter_data.get("title", "")
+                }
+                matched_ids.add(chapter_id)
+            elif chapter_id not in item_ids:
+                print(f"警告：API返回了未请求的章节ID {chapter_id}，已忽略。")
+
+        # 5. 最终验证
+        if not results:
+            print("警告：批量下载未能成功匹配任何章节。")
+            return None
+
+        print(f"批量下载验证通过，成功匹配 {len(results)}/{len(item_ids)} 个章节。")
+        return results
+
+    except requests.exceptions.RequestException as e:
+        print(f"rabbits0209批量请求失败: {str(e)}")
+        return None
+    except json.JSONDecodeError:
+        print(f"rabbits0209批量下载JSON解析失败。响应内容: {response.text[:200]}...")
+        return None
     except Exception as e:
-        print(f"rabbits0209批量下载异常: {str(e)}")
+        print(f"rabbits0209批量下载发生未知异常: {str(e)}")
         return None
 
 def process_chapter_content(content):
@@ -789,24 +998,53 @@ def get_chapters_from_api(book_id, headers):
         api_data = api_response.json()
         chapter_ids = api_data.get("data", {}).get("allItemIds", [])
 
-        # 合并数据
+        # 合并数据，生成按API顺序的章节列表并确保标题正确
         final_chapters = []
         for idx, chapter_id in enumerate(chapter_ids):
             # 查找网页解析的对应章节
             web_chapter = next((ch for ch in chapters if ch["id"] == chapter_id), None)
 
             if web_chapter:
-                final_chapters.append({
-                    "id": chapter_id,
-                    "title": web_chapter["title"],
-                    "index": idx
-                })
+                raw_title = web_chapter.get("raw_title", web_chapter.get("title", "")).strip()
+                # 智能判断是否需要添加章节号前缀
+                # 如果原始标题本身不包含 "第X章" 或 "番外" 等标识，则添加
+                if not re.match(r'^(第[一二三四五六七八九十百千\d]+章|番外|特别篇|if线)', raw_title, re.IGNORECASE):
+                    title = f"第{idx+1}章 {raw_title}"
+                else:
+                    # 否则直接使用原始标题，因为它已经包含了章节信息
+                    title = raw_title
             else:
-                final_chapters.append({
-                    "id": chapter_id,
-                    "title": f"第{idx+1}章",
-                    "index": idx
-                })
+                # 如果在网页解析结果中找不到，则创建一个基础标题
+                title = f"第{idx+1}章"
+
+            final_chapters.append({
+                "id": chapter_id,
+                "title": title,
+                "index": idx
+            })
+
+        # 应用章节矫正功能
+        if CHAPTER_CORRECTION_AVAILABLE and CONFIG.get("chapter_correction", {}).get("enabled", True):
+            try:
+                corrected_chapters, correction_issues = correct_chapters(final_chapters)
+
+                if correction_issues and CONFIG.get("chapter_correction", {}).get("show_correction_report", True):
+                    print("=== 章节矫正报告 ===")
+                    for issue in correction_issues:
+                        print(f"  - {issue}")
+                    print(f"已对 {len(final_chapters)} 个章节进行智能排序矫正")
+                    print("=" * 20)
+
+                # 更新章节索引以保持一致性
+                for idx, chapter in enumerate(corrected_chapters):
+                    chapter["index"] = idx
+
+                return corrected_chapters
+
+            except Exception as e:
+                print(f"章节矫正过程中发生错误: {str(e)}")
+                print("将使用原始章节顺序")
+                return final_chapters
 
         return final_chapters
 
@@ -814,20 +1052,129 @@ def get_chapters_from_api(book_id, headers):
         print(f"获取章节列表失败: {str(e)}")
         return None
 
+
+def apply_post_download_correction(downloaded_chapters, book_info=None):
+    """
+    下载完成后应用章节矫正，提供更好的用户反馈
+    
+    Args:
+        downloaded_chapters: 已下载的章节列表
+        book_info: 书籍信息
+    
+    Returns:
+        (corrected_chapters, correction_report)
+    """
+    try:
+        if not CHAPTER_CORRECTION_AVAILABLE:
+            return downloaded_chapters, "章节矫正模块不可用"
+            
+        correction_config = CONFIG.get("chapter_correction", {})
+        if not correction_config.get("enabled", True):
+            return downloaded_chapters, "章节矫正功能已禁用"
+        
+        print("\n🔧 正在进行下载后章节矫正...")
+        
+        # 准备章节数据用于矫正
+        chapters_for_correction = []
+        for i, chapter in enumerate(downloaded_chapters):
+            chapters_for_correction.append({
+                "id": chapter.get("id", str(i)),
+                "title": chapter.get("title", f"第{i+1}章"),
+                "index": i
+            })
+        
+        # 执行矫正
+        corrected_chapters, issues = correct_chapters(chapters_for_correction)
+        
+        # 检查是否有顺序变化
+        original_order = [ch["title"] for ch in chapters_for_correction]
+        corrected_order = [ch["title"] for ch in corrected_chapters]
+        has_changes = original_order != corrected_order
+        
+        # 生成报告
+        report_lines = []
+        report_lines.append("=== 📚 下载后章节矫正报告 ===")
+        
+        if book_info:
+            report_lines.append(f"书籍: {book_info.get('book_name', '未知')}")
+        
+        report_lines.append(f"总章节数: {len(downloaded_chapters)}")
+        
+        if has_changes:
+            report_lines.append("✅ 章节顺序已重新优化")
+            
+            # 显示关键变化
+            changes_count = sum(1 for o, c in zip(original_order, corrected_order) if o != c)
+            report_lines.append(f"调整了 {changes_count} 个章节的位置")
+            
+            # 显示前3个重要变化
+            shown = 0
+            for i, (orig, corr) in enumerate(zip(original_order, corrected_order)):
+                if orig != corr and shown < 3:
+                    report_lines.append(f"  位置 {i+1}: '{orig}' → '{corr}'")
+                    shown += 1
+            
+            if changes_count > 3:
+                report_lines.append(f"  ... 还有 {changes_count - 3} 个其他调整")
+        else:
+            report_lines.append("ℹ️ 章节顺序已是最优，无需调整")
+        
+        if issues:
+            report_lines.append("🔍 处理的问题:")
+            for issue in issues:
+                report_lines.append(f"  - {issue}")
+        
+        report_lines.append("=" * 30)
+        report = "\n".join(report_lines)
+        
+        # 显示报告
+        if correction_config.get("show_correction_report", True):
+            print(report)
+        
+        # 如果有变化，重新构建下载章节数据
+        if has_changes:
+            final_chapters = []
+            for corrected_ch in corrected_chapters:
+                # 找到对应的原始章节数据
+                original_ch = next(
+                    (ch for ch in downloaded_chapters if ch.get("id") == corrected_ch["id"]), 
+                    None
+                )
+                
+                if original_ch:
+                    # 保持原有数据结构，只更新标题和索引
+                    updated_ch = original_ch.copy()
+                    updated_ch["title"] = corrected_ch["title"]
+                    updated_ch["corrected_index"] = len(final_chapters)
+                    final_chapters.append(updated_ch)
+            
+            return final_chapters, report
+        else:
+            return downloaded_chapters, report
+        
+    except Exception as e:
+        error_msg = f"章节矫正过程中发生错误: {str(e)}"
+        print(error_msg)
+        return downloaded_chapters, error_msg
+
 def get_book_info(book_id, headers):
-    """获取书名、作者、简介"""
+    """获取书籍完整信息 - 增强版，从官网HTML解析完整信息"""
     url = f'https://fanqienovel.com/page/{book_id}'
     try:
-        response = requests.get(url, headers=headers, timeout=CONFIG["request_timeout"])
+                # 使用普通浏览器头请求 HTML 页面，避免 Ajax JSON 响应
+        html_headers = {k: v for k, v in headers.items() if k not in ['Accept', 'X-Requested-With']}
+        html_headers['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        response = requests.get(url, headers=html_headers, timeout=CONFIG["request_timeout"])
+
         if response.status_code != 200:
             print(f"网络请求失败，状态码: {response.status_code}")
-            return None, None, None
+            return None
 
         soup = bs4.BeautifulSoup(response.text, 'html.parser')
 
         # 获取书名
         name_element = soup.find('h1')
-        name = name_element.text if name_element else "未知书名"
+        name = name_element.text.strip() if name_element else "未知书名"
 
         # 获取作者
         author_name = "未知作者"
@@ -835,20 +1182,74 @@ def get_book_info(book_id, headers):
         if author_name_element:
             author_name_span = author_name_element.find('span', class_='author-name-text')
             if author_name_span:
-                author_name = author_name_span.text
+                author_name = author_name_span.text.strip()
 
         # 获取简介
-        description = "无简介"
+        description = "暂无简介"
         description_element = soup.find('div', class_='page-abstract-content')
         if description_element:
             description_p = description_element.find('p')
             if description_p:
-                description = description_p.text
+                # 保持换行格式
+                description = description_p.get_text(separator='\n', strip=True)
+            else:
+                description = description_element.get_text(separator='\n', strip=True)
 
-        return name, author_name, description
+        # 获取封面图片URL
+        cover_url = ""
+        cover_element = soup.find('img', class_='book-cover-img')
+        if cover_element and cover_element.get('src'):
+            cover_url = cover_element.get('src')
+
+        # 获取完结状态和类型标签
+        status = "连载中"  # 默认状态
+        tags = []
+
+        # 解析标签信息
+        label_elements = soup.find_all('span', class_='info-label-yellow') + soup.find_all('span', class_='info-label-grey')
+        for label in label_elements:
+            label_text = label.text.strip()
+            if label_text in ['已完结', '连载中', '完结']:
+                status = '已完结' if label_text in ['已完结', '完结'] else '连载中'
+            else:
+                tags.append(label_text)
+
+        # 获取字数信息
+        word_count = ""
+        word_element = soup.find('div', class_='info-count-word')
+        if word_element:
+            detail_span = word_element.find('span', class_='detail')
+            text_span = word_element.find('span', class_='text')
+            if detail_span and text_span:
+                word_count = f"{detail_span.text.strip()}{text_span.text.strip()}"
+
+        # 获取最后更新时间
+        last_update = ""
+        time_element = soup.find('span', class_='info-last-time')
+        if time_element:
+            last_update = time_element.text.strip()
+
+        print(f"成功获取书籍信息: {name}")
+        print(f"作者: {author_name}")
+        print(f"状态: {status}")
+        print(f"标签: {', '.join(tags) if tags else '无'}")
+        print(f"字数: {word_count}")
+        print(f"最后更新: {last_update}")
+
+        return {
+            'name': name,
+            'author': author_name,
+            'description': description,
+            'cover_url': cover_url,
+            'status': status,
+            'tags': tags,
+            'word_count': word_count,
+            'last_update': last_update
+        }
+
     except Exception as e:
         print(f"获取书籍信息失败: {str(e)}")
-        return None, None, None
+        return None
 
 def load_status(save_path, book_id=None):
     """加载下载状态"""
@@ -947,16 +1348,33 @@ def Run(book_id, save_path):
         sys.exit(0)
 
     def write_downloaded_chapters_in_order():
-        """按章节顺序写入"""
+        """按章节顺序写入，包含完整性检查"""
         if not chapter_results:
             return
 
+        # 执行章节完整性检查
+        is_valid, issues = validate_chapter_integrity(chapter_results, len(chapters), chapters)
+
+        if not is_valid:
+            print("警告：章节完整性检查发现问题，但仍将写入已下载的章节")
+            for issue in issues:
+                print(f"  - {issue}")
+
         with open(output_file_path, 'w', encoding='utf-8') as f:
             f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
+
+            # 如果有完整性问题，在文件开头添加警告
+            if not is_valid:
+                f.write("=" * 50 + "\n")
+                f.write("警告：本文件可能存在章节完整性问题\n")
+                for issue in issues:
+                    f.write(f"- {issue}\n")
+                f.write("=" * 50 + "\n\n")
+
             for idx in range(len(chapters)):
                 if idx in chapter_results:
                     result = chapter_results[idx]
-                    title = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
+                    title = result["title"]
                     f.write(f"{title}\n{result['content']}\n\n")
 
     # 信号处理
@@ -969,10 +1387,15 @@ def Run(book_id, save_path):
             print("未找到任何章节，请检查小说ID是否正确。")
             return
 
-        name, author_name, description = get_book_info(book_id, headers)
-        if not name:
+        book_info = get_book_info(book_id, headers)
+        if book_info:
+            name = book_info.get('name', f"未知小说_{book_id}")
+            author_name = book_info.get('author', "未知作者")
+            description = book_info.get('description', "暂无简介")
+        else:
             name = f"未知小说_{book_id}"
             author_name = "未知作者"
+            description = "暂无简介"
             description = "无简介"
 
         downloaded = load_status(save_path, book_id)
@@ -1029,8 +1452,7 @@ def Run(book_id, save_path):
                             processed = process_chapter_content(content)
                             with lock:
                                 chapter_results[chap["index"]] = {
-                                    "base_title": chap["title"],
-                                    "api_title": "",
+                                    "title": chap["title"],
                                     "content": processed
                                 }
                                 downloaded.add(chap["id"])
@@ -1053,8 +1475,7 @@ def Run(book_id, save_path):
                 if content:
                     with lock:
                         chapter_results[chapter["index"]] = {
-                            "base_title": chapter["title"],
-                            "api_title": title,
+                            "title": title or chapter["title"],
                             "content": content
                         }
                         downloaded.add(chapter["id"])
@@ -1123,13 +1544,21 @@ class GUIdownloader:
             read_count = enhanced_info.get('read_count')
             creation_status = enhanced_info.get('creation_status')
             category_tags = enhanced_info.get('category_tags', [])
+            # 确保列表项为 dict，便于后续使用 tag.get
+            category_tags = [{'category_name': tag} if isinstance(tag, str) else tag for tag in category_tags]
             book_id = enhanced_info.get('book_id', '')
             
             if read_count:
                 header += f"阅读量: {read_count}\n"
             
-            if creation_status:
-                status_text = "完结" if creation_status == "0" else "连载中"
+            if creation_status is not None:
+                # 处理不同类型的状态值
+                if creation_status == "0" or creation_status == 0:
+                    status_text = "完结"
+                elif creation_status == "1" or creation_status == 1:
+                    status_text = "连载中"
+                else:
+                    status_text = f"未知状态({creation_status})"
                 header += f"连载状态: {status_text}\n"
             
             if category_tags:
@@ -1199,19 +1628,42 @@ class GUIdownloader:
                     read_count = enhanced_info.get('read_count')
                     creation_status = enhanced_info.get('creation_status')
                     category_tags = enhanced_info.get('category_tags', [])
-                    
+                    # 确保列表项为 dict，便于后续使用 tag.get
+                    category_tags = [{'category_name': tag} if isinstance(tag, str) else tag for tag in category_tags]
+                    word_count = enhanced_info.get('word_count')
+                    last_update = enhanced_info.get('last_update')
+
                     if read_count:
                         self.status_callback(f"阅读量: {read_count}")
-                    
+
                     if creation_status is not None:
-                        status_text = "完结" if creation_status == "0" else "连载中"
+                        # 转换状态码为可读文本
+                        if creation_status == "0" or creation_status == 0:
+                            status_text = "完结"
+                        elif creation_status == "1" or creation_status == 1:
+                            status_text = "连载中"
+                        else:
+                            status_text = f"未知状态({creation_status})"
                         self.status_callback(f"状态: {status_text}")
-                    
+
+                    if word_count:
+                        self.status_callback(f"字数: {word_count}")
+
+                    if last_update:
+                        self.status_callback(f"最后更新: {last_update}")
+
                     if category_tags:
-                        categories = [tag.get('category_name', '') for tag in category_tags if tag.get('category_name')]
-                        if categories:
-                            self.status_callback(f"分类: {' | '.join(categories)}")
-                    
+                        # 处理不同格式的标签
+                        if isinstance(category_tags, list) and category_tags:
+                            # 如果是字符串列表，直接使用
+                            if isinstance(category_tags[0], str):
+                                self.status_callback(f"分类标签: {' | '.join(category_tags)}")
+                            # 如果是字典列表（来自搜索API），提取category_name
+                            elif isinstance(category_tags[0], dict):
+                                categories = [tag.get('category_name', '') for tag in category_tags if tag.get('category_name')]
+                                if categories:
+                                    self.status_callback(f"分类标签: {' | '.join(categories)}")
+
                     if enhanced_info.get('thumb_url'):
                         self.status_callback("检测到封面图片，EPUB版本将包含封面")
             else:
@@ -1302,13 +1754,40 @@ class GUIdownloader:
                         self.status_callback(f"Dlmily下载第 {current_batch}/{total_batches} 批 ({len(batch)} 章节)")
 
                     item_ids = [chap["id"] for chap in batch]
-                    batch_results = batch_download_chapters(item_ids, headers)
+
+                    # Dlmity立即重试机制
+                    immediate_retry_enabled = CONFIG.get("request", {}).get("immediate_retry", True)
+                    batch_results = None
+                    batch_retry_count = 0
+                    max_batch_retries = CONFIG.get("request", {}).get("max_retries", 3) if immediate_retry_enabled else 1
+
+                    while batch_retry_count < max_batch_retries and not batch_results:
+                        if batch_retry_count > 0 and immediate_retry_enabled:
+                            print(f"[Dlmity批次 {current_batch}] 第 {batch_retry_count + 1} 次尝试...")
+                            if self.status_callback:
+                                self.status_callback(f"Dlmity批次 {current_batch} 立即重试中 ({batch_retry_count + 1}/{max_batch_retries})...")
+                            time.sleep(1)  # 重试前短暂等待
+
+                        batch_results = batch_download_chapters(item_ids, headers)
+                        batch_retry_count += 1
+
+                        if not batch_results and batch_retry_count < max_batch_retries and immediate_retry_enabled:
+                            print(f"[Dlmity批次 {current_batch}] 第 {batch_retry_count} 次尝试失败，将立即重试")
 
                     if not batch_results:
-                        if self.status_callback:
-                            self.status_callback(f"第 {current_batch} 批下载失败，将使用rabbits0209模式重试")
+                        if immediate_retry_enabled:
+                            print(f"[Dlmity批次 {current_batch}] 在 {batch_retry_count} 次立即重试后仍失败")
+                            if self.status_callback:
+                                self.status_callback(f"Dlmity第 {current_batch} 批在 {batch_retry_count} 次立即重试后仍失败，将使用rabbits0209模式重试")
+                        else:
+                            print(f"[Dlmity批次 {current_batch}] 下载失败（立即重试已禁用）")
+                            if self.status_callback:
+                                self.status_callback(f"Dlmity第 {current_batch} 批下载失败，将使用rabbits0209模式重试")
                         failed_chapters.extend(batch)
                         continue
+
+                    if batch_retry_count > 1 and immediate_retry_enabled:
+                        print(f"[Dlmity批次 {current_batch}] 总共尝试了 {batch_retry_count} 次，成功！")
 
                     # 处理批量下载结果
                     batch_success = 0
@@ -1349,18 +1828,7 @@ class GUIdownloader:
                     if self.status_callback:
                         self.status_callback(f"第 {current_batch} 批完成，成功下载 {batch_success}/{len(batch)} 章节")
 
-                # 写入Dlmily下载的结果
-                if chapter_results:
-                    with open(output_file_path, 'w', encoding='utf-8') as f:
-                        # 写入详细的书籍信息头部
-                        f.write(self._generate_book_header(name, author_name, description, enhanced_info))
-                        
-                        for idx in range(len(chapters)):
-                            if idx in chapter_results:
-                                result = chapter_results[idx]
-                                title = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
-                                f.write(f"{title}\n{result['content']}\n\n")
-
+                # Dlmily下载结果已存入chapter_results, 无需立即写入
                 save_status(self.save_path, downloaded, self.book_id)
                 todo_chapters = failed_chapters.copy()
                 failed_chapters = []
@@ -1370,6 +1838,23 @@ class GUIdownloader:
 
             # rabbits0209下载模式 - 使用qwq批量请求
             single_chapter_success_count = 0  # 单独计算rabbits0209下载的成功数
+            
+            # 应用rabbits0209章节限制检查
+            if todo_chapters and self.download_mode == 'single':
+                try:
+                    from config import CONFIG as user_config
+                    is_over_limit, max_chapters, suggested_batches = check_rabbits0209_limit(todo_chapters, user_config)
+                    
+                    if is_over_limit:
+                        if self.status_callback:
+                            self.status_callback(f"检测到章节数({len(todo_chapters)})超过rabbits0209限制({max_chapters}章)")
+                            self.status_callback(f"将自动分为 {suggested_batches} 个批次进行下载")
+                    else:
+                        if self.status_callback:
+                            self.status_callback(f"章节数({len(todo_chapters)})在限制范围内，开始下载")
+                except Exception as e:
+                    print(f"警告: 应用rabbits0209章节限制时发生错误 {str(e)}")
+            
             if self.status_callback and todo_chapters:
                 self.status_callback("开始rabbits0209批量请求模式...")
 
@@ -1378,20 +1863,51 @@ class GUIdownloader:
             max_attempts = CONFIG.get("max_retries", 3)
             all_single_results = {}  # 收集所有成功下载的章节
 
-            # 获取rabbits0209模式的批量大小（最大30章）
+            # 获取rabbits0209模式的有效批量大小（考虑章节限制）
             try:
                 # 使用全局CONFIG，避免重复导入
                 from config import CONFIG as user_config
-                single_batch_size = min(user_config.get("request", {}).get("single_batch_size", 30), 30)
-                print(f"rabbits0209批量大小设置: {single_batch_size}")
+                
+                # 获取用户配置的批量大小
+                user_batch_size = user_config.get("request", {}).get("single_batch_size", None)
+                
+                # 获取章节限制配置
+                enable_limit = user_config.get("request", {}).get("rabbits0209_enable_limit", True)
+                max_chapters = user_config.get("request", {}).get("rabbits0209_max_chapters", 30)
+                
+                if user_batch_size is not None:
+                    # 用户明确配置了批量大小，rabbits0209 API最大只能接受30章
+                    configured_batch_size = min(user_batch_size, 30)  # 最大限制30章
+                    print(f"用户配置的rabbits0209批量大小: {configured_batch_size}")
+                else:
+                    # 未配置时，使用线程数作为批量大小（GUI可控制）
+                    max_workers = CONFIG.get("max_workers", 4)
+                    configured_batch_size = min(max_workers * 5, 30)  # 线程数的5倍，最大30
+                    print(f"根据线程数({max_workers})计算rabbits0209批量大小: {configured_batch_size}")
+                
+                # 应用章节限制
+                if enable_limit and self.download_mode == 'single':
+                    single_batch_size = min(configured_batch_size, max_chapters)
+                    if single_batch_size != configured_batch_size:
+                        print(f"应用rabbits0209章节限制: 批量大小从 {configured_batch_size} 调整为 {single_batch_size}")
+                        if self.status_callback:
+                            self.status_callback(f"应用章节限制: 每批最多 {single_batch_size} 章节")
+                else:
+                    single_batch_size = configured_batch_size
+                    if self.status_callback and not enable_limit:
+                        self.status_callback(f"未启用章节限制，使用配置的批量大小: {single_batch_size}")
+                    
             except Exception as e:
                 print(f"获取批量大小配置失败: {e}，使用默认值30")
                 single_batch_size = 30
 
-            # 确保批量大小至少为1
+            # 确保批量大小在合理范围内（rabbits0209 API限制）
             if single_batch_size < 1:
                 single_batch_size = 1
                 print("批量大小调整为最小值1")
+            elif single_batch_size > 30:
+                single_batch_size = 30
+                print("批量大小调整为最大值30（rabbits0209 API限制）")
 
             while todo_chapters and attempt <= max_attempts:
                 if self.stop_flag:
@@ -1402,30 +1918,91 @@ class GUIdownloader:
 
                 failed_chapters_this_round = []
 
+                # 保持失败章节的完整上下文信息，包括原始顺序
+                chapter_context_map = {}
+                for ch in todo_chapters:
+                    chapter_context_map[ch["id"]] = {
+                        "index": ch["index"],
+                        "title": ch["title"],
+                        "original_chapter": ch,
+                        "retry_count": getattr(ch, 'retry_count', 0) + 1
+                    }
+
                 # 使用rabbits0209批量请求
                 if self.status_callback:
                     self.status_callback(f"使用rabbits0209批量请求，每批 {single_batch_size} 章节...")
+                
+                # 记录批量下载开始时间和统计信息
+                batch_start_time = time.time()
+                total_batches_count = (len(todo_chapters) + single_batch_size - 1) // single_batch_size
+                print(f"rabbits0209批量下载开始:")
+                print(f"  - 总章节数: {len(todo_chapters)}")
+                print(f"  - 批次数: {total_batches_count}")
+                print(f"  - 每批最多: {single_batch_size}章")
+                print(f"  - 章节限制: {'启用' if enable_limit else '禁用'}")
+                if enable_limit:
+                    print(f"  - 限制值: {max_chapters}章")
+                    if configured_batch_size > max_chapters:
+                        print(f"  - 批量大小已从 {configured_batch_size} 调整为 {single_batch_size}")
+                print(f"  - 开始时间: {time.strftime('%H:%M:%S', time.localtime(batch_start_time))}")
 
                 for batch_start in range(0, len(todo_chapters), single_batch_size):
                     if self.stop_flag:
                         break
 
                     batch_chapters = todo_chapters[batch_start:batch_start + single_batch_size]
+                    # 按原始索引排序，确保顺序正确
+                    batch_chapters = sorted(batch_chapters, key=lambda x: x["index"])
                     batch_item_ids = [ch["id"] for ch in batch_chapters]
 
                     batch_num = batch_start // single_batch_size + 1
                     total_batches = (len(todo_chapters) + single_batch_size - 1) // single_batch_size
 
+                    # 记录批次开始时间
+                    batch_time_start = time.time()
+                    
                     if self.status_callback:
                         self.status_callback(f"rabbits0209批量请求第 {batch_num}/{total_batches} 批 ({len(batch_chapters)} 章节)")
 
-                    print(f"处理第 {batch_num} 批，章节IDs: {batch_item_ids[:3]}{'...' if len(batch_item_ids) > 3 else ''}")
+                    print(f"[批次 {batch_num}] 开始时间: {time.strftime('%H:%M:%S', time.localtime(batch_time_start))}")
+                    print(f"[批次 {batch_num}] 章节索引范围: {batch_chapters[0]['index']}-{batch_chapters[-1]['index']}")
+                    print(f"[批次 {batch_num}] 章节IDs: {batch_item_ids[:3]}{'...' if len(batch_item_ids) > 3 else ''}")
 
-                    # 调用rabbits0209批量下载
-                    batch_results = qwq_batch_download_chapters(batch_item_ids, headers)
+                    # 根据配置决定是否使用立即重试机制
+                    immediate_retry_enabled = CONFIG.get("request", {}).get("immediate_retry", True)
+                    batch_results = None
+                    batch_retry_count = 0
+                    max_batch_retries = CONFIG.get("request", {}).get("max_retries", 3) if immediate_retry_enabled else 1
+
+                    while batch_retry_count < max_batch_retries and not batch_results:
+                        if batch_retry_count > 0 and immediate_retry_enabled:
+                            print(f"[批次 {batch_num}] 第 {batch_retry_count + 1} 次尝试...")
+                            if self.status_callback:
+                                self.status_callback(f"批次 {batch_num} 立即重试中 ({batch_retry_count + 1}/{max_batch_retries})...")
+                            time.sleep(1)  # 重试前短暂等待
+
+                        batch_results = qwq_batch_download_chapters(batch_item_ids, headers)
+                        batch_retry_count += 1
+
+                        if not batch_results and batch_retry_count < max_batch_retries and immediate_retry_enabled:
+                            print(f"[批次 {batch_num}] 第 {batch_retry_count} 次尝试失败，将立即重试")
+
+                    # 记录批次结束时间
+                    batch_time_end = time.time()
+                    batch_duration = batch_time_end - batch_time_start
+                    print(f"[批次 {batch_num}] 结束时间: {time.strftime('%H:%M:%S', time.localtime(batch_time_end))}")
+                    print(f"[批次 {batch_num}] 耗时: {batch_duration:.2f}秒")
+
+                    if batch_retry_count > 1 and immediate_retry_enabled:
+                        print(f"[批次 {batch_num}] 总共尝试了 {batch_retry_count} 次")
+                    elif not immediate_retry_enabled:
+                        print(f"[批次 {batch_num}] 立即重试已禁用，失败批次将在最后统一重试")
 
                     if batch_results:
-                        # 处理批量下载结果
+                        # 严格按照请求顺序处理批量下载结果，使用上下文信息验证
+                        successful_in_batch = 0
+                        print(f"[批次 {batch_num}] 处理下载结果: 收到 {len(batch_results)} 个章节数据")
+                        
                         for chapter in batch_chapters:
                             chapter_id = chapter["id"]
                             if chapter_id in batch_results:
@@ -1433,87 +2010,284 @@ class GUIdownloader:
                                 content = chapter_data.get("content", "")
                                 title = chapter_data.get("title", "")
 
+                                # 验证章节上下文信息
+                                if chapter_id in chapter_context_map:
+                                    expected_index = chapter_context_map[chapter_id]["index"]
+                                    expected_title = chapter_context_map[chapter_id]["title"]
+
+                                    # 验证索引一致性
+                                    if chapter["index"] != expected_index:
+                                        print(f"警告：章节 {chapter_id} 索引不一致，期望 {expected_index}，实际 {chapter['index']}")
+
+                                    # 可选：验证标题相似性（简单检查）
+                                    if title and expected_title and title not in expected_title and expected_title not in title:
+                                        print(f"警告：章节 {chapter_id} 标题可能不匹配，期望包含 '{expected_title}'，实际 '{title}'")
+
                                 if content:
-                                    all_single_results[chapter["index"]] = (chapter, title, content)
+                                    # 使用章节的原始索引确保正确顺序，并记录上下文信息
+                                    if chapter_id in chapter_context_map:
+                                        original_index = chapter_context_map[chapter_id]["index"]
+                                        original_chapter = chapter_context_map[chapter_id]["original_chapter"]
+                                        retry_count = chapter_context_map[chapter_id]["retry_count"]
+
+                                        all_single_results[original_index] = (original_chapter, title, content)
+                                        print(f"批量下载成功：第{original_index+1}章 {chapter['title']} (重试{retry_count}次)")
+                                    else:
+                                        all_single_results[chapter["index"]] = (chapter, title, content)
+                                        print(f"批量下载成功：第{chapter['index']+1}章 {chapter['title']}")
+
                                     downloaded.add(chapter["id"])
                                     save_status(self.save_path, downloaded, self.book_id)
                                     single_chapter_success_count += 1
+                                    successful_in_batch += 1
 
                                     if self.status_callback:
                                         current_pos = already_downloaded + batch_success_count + single_chapter_success_count
-                                        self.status_callback(f"已下载: {chapter['title']} ({current_pos}/{total_chapters})")
+                                        self.status_callback(f"已下载: {title or chapter['title']} ({current_pos}/{total_chapters})")
                                     if self.progress_callback:
                                         progress = int(current_pos / total_chapters * 100)
                                         self.progress_callback(progress)
                                 else:
-                                    print(f"章节 {chapter_id} ({chapter['title']}) 内容为空")
-                                    failed_chapters_this_round.append(chapter)
+                                    # 保留完整上下文信息用于重试
+                                    if chapter_id in chapter_context_map:
+                                        failed_chapter = chapter_context_map[chapter_id]["original_chapter"].copy()
+                                        failed_chapter['retry_count'] = chapter_context_map[chapter_id]['retry_count']
+                                        failed_chapters_this_round.append(failed_chapter)
+                                    else:
+                                        failed_chapters_this_round.append(chapter)
+                                    print(f"章节 {chapter_id} (第{chapter['index']+1}章: {chapter['title']}) 内容为空")
                             else:
-                                # 批量结果中没有这个章节，标记为失败
-                                print(f"章节 {chapter_id} ({chapter['title']}) 不在批量结果中")
-                                failed_chapters_this_round.append(chapter)
+                                # 批量结果中没有这个章节，保持原始顺序信息并标记为失败
+                                if chapter_id in chapter_context_map:
+                                    failed_chapter = chapter_context_map[chapter_id]["original_chapter"].copy()
+                                    failed_chapter['retry_count'] = chapter_context_map[chapter_id]['retry_count']
+                                    failed_chapters_this_round.append(failed_chapter)
+                                else:
+                                    failed_chapters_this_round.append(chapter)
+                                print(f"章节 {chapter_id} (第{chapter['index']+1}章: {chapter['title']}) 不在批量结果中")
 
-                        # 统计本批次成功数量
-                        successful_in_batch = len([c for c in batch_chapters if c["id"] in batch_results and batch_results[c["id"]].get("content")])
+                        # 记录批次完成统计
+                        print(f"[批次 {batch_num}] 完成统计: 成功={successful_in_batch}/{len(batch_chapters)}, 失败={len(batch_chapters)-successful_in_batch}")
+                        print(f"[批次 {batch_num}] 成功率: {successful_in_batch/len(batch_chapters)*100:.1f}%")
+                        
                         if self.status_callback:
                             self.status_callback(f"第 {batch_num} 批完成: {successful_in_batch}/{len(batch_chapters)} 章节成功")
                     else:
-                        # 整批失败，所有章节都加入重试列表
+                        # 整批失败，保持章节顺序信息并加入重试列表
+                        print(f"[批次 {batch_num}] 完全失败，章节索引: {[ch['index'] for ch in batch_chapters]}")
+                        if immediate_retry_enabled:
+                            print(f"[批次 {batch_num}] 失败原因: 批量请求在 {batch_retry_count} 次立即重试后仍返回空结果")
+                            if self.status_callback:
+                                self.status_callback(f"第 {batch_num} 批在 {batch_retry_count} 次立即重试后仍失败，将在下轮重试")
+                        else:
+                            print(f"[批次 {batch_num}] 失败原因: 批量请求返回空结果（立即重试已禁用）")
+                            if self.status_callback:
+                                self.status_callback(f"第 {batch_num} 批失败，将在最后统一重试")
                         failed_chapters_this_round.extend(batch_chapters)
-                        if self.status_callback:
-                            self.status_callback(f"第 {batch_num} 批rabbits0209批量请求完全失败，将重试")
 
                     # 批次间延迟
                     time.sleep(CONFIG["request_rate_limit"])
 
 
 
-                # 更新待重试章节列表
-                todo_chapters = failed_chapters_this_round.copy()
+                # 更新待重试章节列表 - 按原始索引排序保持顺序
+                todo_chapters = sorted(failed_chapters_this_round.copy(), key=lambda x: x["index"])
+                
+                if todo_chapters:
+                    print(f"本轮重试失败章节索引: {[ch['index'] for ch in todo_chapters]}")
+                    if self.status_callback:
+                        index_ranges = f"第{todo_chapters[0]['index']+1}章" + (f"-第{todo_chapters[-1]['index']+1}章" if len(todo_chapters) > 1 else "")
+                        self.status_callback(f"本轮剩余失败章节: {len(todo_chapters)}个 ({index_ranges})")
+                
                 attempt += 1
 
                 # 如果还有失败章节且未达到最大重试次数，等待后重试
                 if todo_chapters and attempt <= max_attempts:
                     if self.status_callback:
-                        self.status_callback(f"等待 2 秒后进行重试...")
+                        self.status_callback(f"等待 2 秒后进行第 {attempt} 次重试...")
                     time.sleep(2)
-            # 写入rabbits0209下载结果 - 按章节索引顺序写入
+            
+            # 记录rabbits0209下载完成统计
+            batch_end_time = time.time()
+            total_batch_duration = batch_end_time - batch_start_time
+            print(f"rabbits0209批量下载完成统计:")
+            print(f"  - 总耗时: {total_batch_duration:.2f}秒")
+            print(f"  - 总批次数: {total_batches_count}")
+            print(f"  - 每批最大章节数: {single_batch_size}")
+            print(f"  - 章节限制状态: {'已启用' if enable_limit else '未启用'}")
+            if enable_limit:
+                print(f"  - 章节限制值: {max_chapters}章")
+            print(f"  - 成功章节数: {single_chapter_success_count}")
+            print(f"  - 失败章节数: {len(todo_chapters)}")
+            print(f"  - 成功率: {single_chapter_success_count/(single_chapter_success_count+len(todo_chapters))*100:.1f}%" if (single_chapter_success_count+len(todo_chapters)) > 0 else "  - 成功率: 0%")
+            
+            if self.status_callback:
+                if len(todo_chapters) == 0:
+                    self.status_callback(f"rabbits0209下载完成: 全部 {single_chapter_success_count} 章节下载成功")
+                else:
+                    self.status_callback(f"rabbits0209下载完成: {single_chapter_success_count} 章节成功，{len(todo_chapters)} 章节失败")
+            # 统一写入逻辑：在所有下载尝试结束后，对所有成功下载的章节进行排序和写入
+            if self.status_callback:
+                self.status_callback("所有下载尝试已完成，开始整合和写入最终文件...")
+
+            # 1. 将 rabbits0209 下载的所有成功结果合并到主章节结果字典中
             if all_single_results:
-                # 如果没有Dlmily下载的结果，需要重写整个文件以确保顺序正确
-                if batch_success_count == 0:
-                    # 合并所有结果（Dlmily+rabbits0209）到chapter_results
-                    for idx, (chapter, title, content) in all_single_results.items():
+                for idx, (chapter, title, content) in all_single_results.items():
+                    # 确保即使在重试后，结果也被正确地放入主容器
+                    if idx not in chapter_results:
                         chapter_results[idx] = {
                             "base_title": chapter["title"],
                             "api_title": title,
                             "content": content
                         }
 
-                    # 重写整个文件，按章节顺序
+            # 2. 只有在至少下载了一个章节的情况下才执行写入
+            if chapter_results:
+                # 对所有收集到的结果进行最终的完整性检查
+                is_valid, issues = validate_chapter_integrity(chapter_results, len(chapters), chapters)
+                if not is_valid:
+                    if self.status_callback:
+                        self.status_callback(f"警告：检测到 {len(issues)} 个章节完整性问题。")
+                    for issue in issues:
+                        print(f"  - {issue}")
+                else:
+                    if self.status_callback:
+                        self.status_callback("章节完整性检查通过。")
+
+                # 3. 核心修复：始终使用覆盖模式('w')重写整个文件，以确保最终顺序绝对正确
+                try:
                     with open(output_file_path, 'w', encoding='utf-8') as f:
                         f.write(self._generate_book_header(name, author_name, description, enhanced_info))
-                        for idx in range(len(chapters)):
-                            if idx in chapter_results:
-                                result = chapter_results[idx]
-                                title_display = f'{result["base_title"]} {result["api_title"]}' if result["api_title"] else result["base_title"]
-                                f.write(f"{title_display}\n{result['content']}\n\n")
-                else:
-                    # 如果有Dlmily下载结果，只追加rabbits0209结果（按顺序）
-                    with open(output_file_path, 'a', encoding='utf-8') as f:
-                        for idx in sorted(all_single_results.keys()):
-                            chapter, title, content = all_single_results[idx]
-                            display_title = f"{chapter['title']} {title}" if title else chapter['title']
-                            f.write(f"{display_title}\n{content}\n\n")
 
-            # 报告最终失败的章节
+                        if not is_valid:
+                            f.write("=" * 50 + "\n")
+                            f.write("警告：本书籍文件可能存在以下完整性问题：\n")
+                            for issue in issues:
+                                f.write(f"- {issue}\n")
+                            f.write("=" * 50 + "\n\n")
+
+                        # 严格按照章节的原始索引排序并写入
+                        written_count = 0
+                        sorted_indices = sorted(chapter_results.keys())
+                        for idx in sorted_indices:
+                            result = chapter_results[idx]
+                            # 优先使用API返回的标题，如果为空则使用我们自己生成的标题
+                            title_display = result["api_title"] or result["base_title"]
+                            f.write(f"{title_display}\n{result['content']}\n\n")
+                            written_count += 1
+                    
+                    if self.status_callback:
+                        range_text = f"第{sorted_indices[0]+1}-{sorted_indices[-1]+1}章" if sorted_indices else "无"
+                        self.status_callback(f"文件写入成功: 共写入 {written_count} 个章节 (范围: {range_text})")
+
+                    # 🔧 应用下载后章节矫正
+                    try:
+                        if self.status_callback:
+                            self.status_callback("正在进行下载后章节矫正检查...")
+                        
+                        # 准备已下载章节数据用于矫正
+                        downloaded_chapters_for_correction = []
+                        for idx in sorted_indices:
+                            result = chapter_results[idx]
+                            downloaded_chapters_for_correction.append({
+                                "id": str(idx),
+                                "title": result["api_title"] or result["base_title"],
+                                "content": result["content"],
+                                "index": idx
+                            })
+                        
+                        # 执行下载后矫正
+                        corrected_chapters, correction_report = apply_post_download_correction(
+                            downloaded_chapters_for_correction, 
+                            enhanced_info
+                        )
+                        
+                        # 检查是否有矫正变化
+                        original_titles = [ch["title"] for ch in downloaded_chapters_for_correction]
+                        corrected_titles = [ch["title"] for ch in corrected_chapters]
+                        
+                        if original_titles != corrected_titles:
+                            # 有矫正变化，重新写入文件
+                            if self.status_callback:
+                                self.status_callback("检测到章节顺序需要优化，正在重新生成文件...")
+                            
+                            with open(output_file_path, 'w', encoding='utf-8') as f:
+                                f.write(self._generate_book_header(name, author_name, description, enhanced_info))
+                                
+                                # 写入矫正报告
+                                f.write("=" * 50 + "\n")
+                                f.write("📚 章节矫正信息\n")
+                                f.write("=" * 50 + "\n")
+                                f.write(correction_report + "\n\n")
+                                
+                                # 按矫正后的顺序写入章节
+                                for chapter in corrected_chapters:
+                                    f.write(f"{chapter['title']}\n{chapter['content']}\n\n")
+                            
+                            if self.status_callback:
+                                self.status_callback("✅ 章节矫正完成，文件已按最优顺序重新生成")
+                        else:
+                            if self.status_callback:
+                                self.status_callback("ℹ️ 章节顺序已是最优，无需调整")
+                        
+                        # 在GUI中显示矫正报告摘要
+                        if self.status_callback and correction_report:
+                            # 提取关键信息显示
+                            if "章节顺序已重新优化" in correction_report:
+                                self.status_callback("📋 矫正摘要: 章节顺序已优化")
+                            elif "处理的问题" in correction_report:
+                                self.status_callback("📋 矫正摘要: 发现并处理了章节问题")
+                            else:
+                                self.status_callback("📋 矫正摘要: 章节检查完成")
+                                
+                    except Exception as correction_error:
+                        print(f"下载后章节矫正失败: {str(correction_error)}")
+                        if self.status_callback:
+                            self.status_callback(f"章节矫正过程中出现问题: {str(correction_error)}")
+
+                except Exception as e:
+                    error_msg = f"错误: 最终文件写入失败: {str(e)}"
+                    if self.status_callback: self.status_callback(error_msg)
+                    print(error_msg)
+            else:
+                if self.status_callback:
+                    self.status_callback("没有任何成功下载的章节，无需写入文件。")
+
+            # 报告最终失败的章节（按章节顺序）
             if todo_chapters and self.status_callback:
-                self.status_callback(f"警告：{len(todo_chapters)} 个章节在 {max_attempts} 次重试后仍然失败")
+                failed_chapter_numbers = [ch['index'] + 1 for ch in sorted(todo_chapters, key=lambda x: x['index'])]
+                failed_ranges = []
+                start = failed_chapter_numbers[0]
+                end = failed_chapter_numbers[0]
+                
+                # 将连续章节合并为范围显示
+                for i in range(1, len(failed_chapter_numbers)):
+                    if failed_chapter_numbers[i] == end + 1:
+                        end = failed_chapter_numbers[i]
+                    else:
+                        if start == end:
+                            failed_ranges.append(f"第{start}章")
+                        else:
+                            failed_ranges.append(f"第{start}-{end}章")
+                        start = end = failed_chapter_numbers[i]
+                
+                # 添加最后一个范围
+                if start == end:
+                    failed_ranges.append(f"第{start}章")
+                else:
+                    failed_ranges.append(f"第{start}-{end}章")
+                
+                self.status_callback(f"警告：{len(todo_chapters)}个章节在{max_attempts}次重试后仍然失败: {', '.join(failed_ranges)}")
 
-            # 计算总成功数
+            # 计算总成功数和最终统计
             total_success_count = batch_success_count + single_chapter_success_count
-
+            final_progress = int((already_downloaded + total_success_count) / total_chapters * 100)
+            
+            # 最终验证和统计
             if self.status_callback:
-                self.status_callback(f"下载完成！成功下载 {total_success_count} 个章节")
+                success_rate = (total_success_count / len(todo_chapters) * 100) if todo_chapters else 100
+                self.status_callback(f"下载完成！本次成功 {total_success_count}/{len(chapters)-already_downloaded} 章节 (成功率: {success_rate:.1f}%)")
+                self.status_callback(f"总进度: {already_downloaded + total_success_count}/{total_chapters} 章节 ({final_progress}%)")
 
             # 检查是否需要生成EPUB
             if self.output_format == "EPUB" or (self.output_format == "TXT" and self.generate_epub_when_txt):
@@ -1568,11 +2342,14 @@ class GUIdownloader:
                         self.status_callback(f"EPUB生成过程中出错: {str(e)}")
 
             if self.progress_callback:
-                self.progress_callback(100)
+                self.progress_callback(final_progress)
 
         except Exception as e:
             if self.status_callback:
                 self.status_callback(f"下载过程中发生错误: {str(e)}")
+            print(f"下载异常详情: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
 def main():
     print("""欢迎使用番茄小说下载器精简版！
