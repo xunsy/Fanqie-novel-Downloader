@@ -1,68 +1,79 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""
-PyInstaller配置文件 - GUI版本
-用于编译独立的、无控制台窗口的番茄小说下载器
-"""
 
 import os
-from PyInstaller.utils.hooks import collect_data_files
+import sys
 
-# 收集customtkinter数据文件
-customtkinter_datas = collect_data_files('customtkinter')
+# 添加src目录到Python路径
+src_dir = os.path.join(os.path.dirname(os.path.abspath(SPECPATH)), 'src')
+sys.path.insert(0, src_dir)
 
-# 分析主程序
+block_cipher = None
+
 a = Analysis(
     ['main.py'],
-    pathex=['.'],
+    pathex=[],
     binaries=[],
-    datas=customtkinter_datas + [
-        ('gui.py', '.'),
-        ('utils.py', '.'),
-        ('config.py', '.'),
-        ('downloader.py', '.'),
-        ('updater.py', '.'),
-        ('version.py', '.')
+    datas=[
+        # 包含src目录下的所有模块
+        ('src', 'src'),
+        # 包含requirements.txt
+        ('requirements.txt', '.'),
+        # 包含README.md
+        ('README.md', '.'),
     ],
     hiddenimports=[
-        'platformdirs',  # 确保包含此库
+        # 确保所有模块都被包含
+        'src.config.settings',
+        'src.config.constants',
+        'src.core.models.novel',
+        'src.core.models.chapter',
+        'src.core.downloaders.base',
+        'src.core.downloaders.novel_downloader',
+        'src.core.storage.file_manager',
+        'src.services.update_service',
+        'src.services.logging_service',
+        'src.ui.main_window',
+        'src.ui.components.download_panel',
+        'src.ui.components.settings_panel',
+        'src.ui.components.log_panel',
+        'src.utils.file_utils',
+        'src.utils.ui_utils',
+        'src.utils.network_utils',
+        'src.utils.format_converter',
+        # CustomTkinter相关
         'customtkinter',
         'tkinter',
         'tkinter.ttk',
+        'tkinter.messagebox',
+        'tkinter.filedialog',
+        # 网络相关
         'requests',
-        'bs4',
-        'beautifulsoup4',
-        'tqdm',
-        'stem',
-        'fake_useragent',
-        'Crypto',
-        'Crypto.Cipher',
-        'Crypto.Cipher.AES',
-        'ebooklib',
-        'ebooklib.epub',
         'urllib3',
-        'gui',
-        'utils',
-        'config',
-        'downloader',
-        'lxml',
-        'lxml.etree',
-        'lxml.html',
-        'PySocks',
-        'socks',
+        'ssl',
+        'certifi',
+        # 其他依赖
+        'packaging',
+        'packaging.version',
         'json',
+        'datetime',
         'threading',
         'concurrent.futures',
-        'collections',
-        'datetime',
-        'time',
-        'os',
-        'sys',
-        'traceback'
+        'pathlib',
+        'tempfile',
+        'logging',
+        'logging.handlers',
+        # EPUB相关（可选）
+        'ebooklib',
+        'lxml',
+        'html',
+        # 平台相关
+        'platformdirs',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        # 排除不需要的模块以减小体积
         'matplotlib',
         'numpy',
         'pandas',
@@ -71,18 +82,17 @@ a = Analysis(
         'cv2',
         'tensorflow',
         'torch',
-        'sklearn'
+        'jupyter',
+        'IPython',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    cipher=None,
+    cipher=block_cipher,
     noarchive=False,
 )
 
-# 创建PYZ归档
-pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# 创建可执行文件
 exe = EXE(
     pyz,
     a.scripts,
@@ -90,18 +100,34 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='TomatoNovelDownloader', # 设置发布名称
+    name='TomatoNovelDownloader',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # 显示控制台窗口（调试版）
+    console=False,  # 设置为False以隐藏控制台窗口
     disable_windowed_traceback=False,
-    argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # 未找到图标，可在此处添加路径
+    icon=None,  # 如果有图标文件，可以在这里指定
 )
+
+# 如果是macOS，创建app bundle
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='TomatoNovelDownloader.app',
+        icon=None,
+        bundle_identifier='com.tomato.novel.downloader',
+        info_plist={
+            'CFBundleName': 'Tomato Novel Downloader',
+            'CFBundleDisplayName': '番茄小说下载器',
+            'CFBundleVersion': '2.0.0',
+            'CFBundleShortVersionString': '2.0.0',
+            'NSHighResolutionCapable': True,
+            'LSMinimumSystemVersion': '10.13.0',
+        },
+    )

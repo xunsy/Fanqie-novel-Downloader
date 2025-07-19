@@ -72,7 +72,8 @@ jobs:
         run: |
           BUILD_VER="$(date -u +'%Y.%m.%d.%H%M')"
           echo "build_ver=$BUILD_VER" >> $GITHUB_OUTPUT
-          echo "__version__ = \"$BUILD_VER\"" > version.py
+          # 更新新的模块化结构中的版本文件
+          sed -i "s/APP_VERSION = \".*\"/APP_VERSION = \"$BUILD_VER\"/" src/config/constants.py
           echo "BUILD_VER=$BUILD_VER" >> $GITHUB_ENV
 
       - name: Setup Python
@@ -122,7 +123,7 @@ jobs:
         run: |
           EXTRA_ARGS="" # 如果不需要，可以移除这行
           PYINSTALLER_CMD="pyinstaller --log-level DEBUG" # 添加详细日志
-          SPEC_FILE=build_gui.spec  # 使用带控制台窗口的GUI spec
+          SPEC_FILE=build_gui.spec  # 使用模块化重构后的GUI spec
 
           # macOS specific build
           if [[ "${{ matrix.platform }}" == "macos" ]]; then
@@ -284,7 +285,16 @@ jobs:
       - name: Generate release notes
         run: |
           cat << EOF > release_notes.md
-          # 🍅 Fanqie Novel Downloader ${{ steps.prepare.outputs.tag }}
+          # 🍅 番茄小说下载器 v2.0 - 模块化重构版本 ${{ steps.prepare.outputs.tag }}
+
+          ## 🎉 重大更新：模块化重构完成！
+
+          这是全新的模块化重构版本，具有更好的代码组织和维护性：
+          - 🏗️ 分层架构设计 (核心层、服务层、UI层、工具层)
+          - 🔧 单一职责原则，松耦合设计
+          - ⚙️ 统一配置管理系统
+          - 📝 完善的日志系统
+          - 🛡️ 优化的错误处理
 
           ### 🔧 支持平台
           - **macOS**
