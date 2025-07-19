@@ -449,17 +449,29 @@ def fetch_api_endpoints_from_server():
                         "name": source["name"]
                     })
 
-                    # 检查是否支持批量下载
+                    # 检查是否支持批量下载（qyuing API）
                     if source["name"] == CONFIG["batch_config"]["name"]:
-                        base_url = source["single_url"].split('?')[0]
-                        batch_endpoint = base_url.split('/')[-1]
-                        base_url = base_url.rsplit('/', 1)[0] if '/' in base_url else base_url
-
+                        # 解析API URL来构建批量下载端点
+                        single_url = source["single_url"]
+                        if '?' in single_url:
+                            base_url = single_url.split('?')[0]
+                        else:
+                            base_url = single_url
+                            
+                        # 提取端点路径
+                        if '/' in base_url:
+                            batch_endpoint = '/' + base_url.split('/')[-1]
+                            base_url = base_url.rsplit('/', 1)[0]
+                        else:
+                            batch_endpoint = '/api'
+                            
                         # 配置批量下载
                         CONFIG["batch_config"]["base_url"] = base_url
-                        CONFIG["batch_config"]["batch_endpoint"] = f"/{batch_endpoint}"
+                        CONFIG["batch_config"]["batch_endpoint"] = batch_endpoint
                         CONFIG["batch_config"]["token"] = source.get("token", "")
                         CONFIG["batch_config"]["enabled"] = True
+                        
+                        print(f"配置qyuing批量下载: {base_url}{batch_endpoint}")
 
             print("成功从服务器获取API列表!")
             return True
@@ -499,9 +511,9 @@ def extract_chapters(soup):
     return chapters
 
 def batch_download_chapters(item_ids, headers):
-    """Dlmily模式下载章节内容"""
-    if not CONFIG["batch_config"]["enabled"]:
-        print("Dlmily下载功能未启用")
+    """Dlmily模式批量下载章节内容，仅用于qyuing API"""
+    if not CONFIG["batch_config"]["enabled"] or CONFIG["batch_config"]["name"] != "qyuing":
+        print("批量下载功能仅限qyuing API")
         return None
 
     batch_config = CONFIG["batch_config"]
@@ -514,28 +526,29 @@ def batch_download_chapters(item_ids, headers):
         batch_headers["Content-Type"] = "application/json"
 
         payload = {"item_ids": item_ids}
-        response = make_request(
+        
+        # 使用标准requests而不是复杂的make_request
+        response = requests.post(
             url,
             headers=batch_headers,
-            method='POST',
-            data=json.dumps(payload),
+            json=payload,  # 直接使用json参数
             timeout=batch_config["timeout"],
-            verify=False,
-            use_tor=True
+            verify=False
         )
 
         if response.status_code == 200:
             data = response.json()
-
+            
+            # 处理不同的响应格式
             if isinstance(data, dict) and "data" in data:
                 return data["data"]
             return data
         else:
-            print(f"Dlmily下载失败，状态码: {response.status_code}")
+            print(f"批量下载失败，状态码: {response.status_code}")
             return None
 
     except Exception as e:
-        print(f"Dlmily下载异常！")
+        print(f"批量下载异常: {str(e)}")
         return None
 
 def validate_chapter_mapping(item_ids, results):
@@ -866,19 +879,28 @@ def process_chapter_content(content):
         return ""
 
     try:
-        # 移除HTML标签
-        content = re.sub(r'<header>.*?</header>', '', content, flags=re.DOTALL)
-        content = re.sub(r'<footer>.*?</footer>', '', content, flags=re.DOTALL)
-        content = re.sub(r'</?article>', '', content)
-        content = re.sub(r'<p[^>]*>', '\n    ', content)
-        content = re.sub(r'</p>', '', content)
-        content = re.sub(r'<[^>]+>', '', content)
-        content = re.sub(r'\\u003c|\\u003e', '', content)
-
-        # 格式化段落
-        content = re.sub(r'\n{3,}', '\n\n', content).strip()
-        lines = [line.strip() for line in content.split('\n') if line.strip()]
-        return '\n'.join(['    ' + line for line in lines])
+        # 首先尝试提取<p idx="数字">格式的内容（qyuing API格式）
+        paragraphs = re.findall(r'<p idx="\d+">(.*?)</p>', content, re.DOTALL)
+        if paragraphs:
+            # 如果找到了idx格式的段落，使用这种方式处理
+            cleaned_content = "\n".join(p.strip() for p in paragraphs if p.strip())
+            formatted_content = '\n'.join('    ' + line if line.strip() else line 
+                                        for line in cleaned_content.split('\n'))
+        else:
+            # 否则使用通用的HTML清理方式
+            formatted_content = content
+            
+        # 通用HTML清理
+        formatted_content = re.sub(r'<header>.*?</header>', '', formatted_content, flags=re.DOTALL)
+        formatted_content = re.sub(r'<footer>.*?</footer>', '', formatted_content, flags=re.DOTALL)
+        formatted_content = re.sub(r'</?article>', '', formatted_content)
+        formatted_content = re.sub(r'<[^>]+>', '', formatted_content)
+        formatted_content = re.sub(r'\\u003c|\\u003e', '', formatted_content)
+        
+        # 最终格式化
+        formatted_content = re.sub(r'\n{3,}', '\n\n', formatted_content).strip()
+        
+        return formatted_content
     except Exception as e:
         print(f"内容处理错误: {str(e)}")
         return str(content)

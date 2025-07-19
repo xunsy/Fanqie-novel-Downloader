@@ -161,9 +161,14 @@ def generate_enhanced_epub(txt_file_path: str, output_dir: str, book_info: dict)
         # 添加出版商信息
         book.add_metadata('DC', 'publisher', '番茄小说')
         
-        # 添加分类信息
+        # 添加分类信息 - 兼容字符串和字典格式
         if category_tags:
-            categories = [tag.get('category_name', '') for tag in category_tags if tag.get('category_name')]
+            categories = []
+            for tag in category_tags:
+                if isinstance(tag, dict) and tag.get('category_name'):
+                    categories.append(tag['category_name'])
+                elif isinstance(tag, str):
+                    categories.append(tag)
             if categories:
                 book.add_metadata('DC', 'subject', ' | '.join(categories))
         
@@ -286,11 +291,16 @@ def _create_book_info_page(book_info: dict, has_cover: bool) -> str:
     
     status_text = "完结" if creation_status == "0" else "连载中" if creation_status == "1" else "未知"
     
-    # 处理分类标签
+    # 处理分类标签 - 兼容字符串和字典格式
     categories = []
     for tag in category_tags:
-        if isinstance(tag, dict) and tag.get('category_name'):
-            categories.append(tag['category_name'])
+        if isinstance(tag, dict):
+            # 字典格式：{'category_name': '都市'}
+            if tag.get('category_name'):
+                categories.append(tag['category_name'])
+        elif isinstance(tag, str):
+            # 字符串格式：'都市'
+            categories.append(tag)
     category_text = ' | '.join(categories) if categories else '无分类信息'
     
     # 格式化简介
