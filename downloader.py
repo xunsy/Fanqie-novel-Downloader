@@ -311,12 +311,13 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             headers = get_headers()
             book_info = get_book_info(book_id, headers)
 
-            # 使用官网信息作为基础
+            # 使用官网信息作为基础（但不使用官网封面，因为官网无法获取图片）
             if book_info:
                 enhanced_info['book_name'] = book_info.get('name')
                 enhanced_info['author'] = book_info.get('author')
                 enhanced_info['description'] = book_info.get('description')
-                enhanced_info['thumb_url'] = book_info.get('cover_url')
+                # 注释掉官网封面获取，直接使用搜索API的封面
+                # enhanced_info['thumb_url'] = book_info.get('cover_url')
                 enhanced_info['creation_status'] = book_info.get('status')
                 enhanced_info['category_tags'] = book_info.get('tags', [])
                 # 添加额外信息
@@ -371,8 +372,8 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             if (not enhanced_info['description'] or enhanced_info['description'] == '暂无简介') and search_desc:
                 enhanced_info['description'] = search_desc
             
-            # 封面：优先使用官网信息，如果官网没有才使用搜索结果
-            if not enhanced_info['thumb_url'] and search_info.get('thumb_url'):
+            # 封面：直接使用搜索API的结果，不使用官网封面
+            if search_info.get('thumb_url'):
                 enhanced_info['thumb_url'] = search_info['thumb_url']
             
             if search_info.get('read_count'):
@@ -1080,6 +1081,7 @@ def get_chapters_from_api(book_id, headers):
 def apply_post_download_correction(downloaded_chapters, book_info=None):
     """
     下载完成后应用章节矫正，提供更好的用户反馈
+    执行3次矫正迭代以确保最佳效果
     
     Args:
         downloaded_chapters: 已下载的章节列表
@@ -1096,26 +1098,67 @@ def apply_post_download_correction(downloaded_chapters, book_info=None):
         if not correction_config.get("enabled", True):
             return downloaded_chapters, "章节矫正功能已禁用"
         
-        print("\n🔧 正在进行下载后章节矫正...")
+        print("\n🔧 正在进行下载后章节矫正（3次迭代优化）...")
         
         # 准备章节数据用于矫正
-        chapters_for_correction = []
+        current_chapters = []
         for i, chapter in enumerate(downloaded_chapters):
-            chapters_for_correction.append({
+            current_chapters.append({
                 "id": chapter.get("id", str(i)),
                 "title": chapter.get("title", f"第{i+1}章"),
                 "index": i
             })
         
-        # 执行矫正
-        corrected_chapters, issues = correct_chapters(chapters_for_correction)
+        # 执行3次矫正迭代
+        all_issues = []
+        total_changes = 0
+        correction_rounds = []
         
-        # 检查是否有顺序变化
-        original_order = [ch["title"] for ch in chapters_for_correction]
-        corrected_order = [ch["title"] for ch in corrected_chapters]
-        has_changes = original_order != corrected_order
+        for round_num in range(1, 4):  # 执行3次矫正
+            print(f"🔄 第{round_num}次章节矫正...")
+            
+            # 记录本轮矫正前的状态
+            before_correction = [ch["title"] for ch in current_chapters]
+            
+            # 执行矫正
+            corrected_chapters, issues = correct_chapters(current_chapters)
+            
+            # 检查本轮是否有变化
+            after_correction = [ch["title"] for ch in corrected_chapters]
+            round_has_changes = before_correction != after_correction
+            
+            if round_has_changes:
+                changes_count = sum(1 for b, a in zip(before_correction, after_correction) if b != a)
+                total_changes += changes_count
+                print(f"  ✅ 第{round_num}次矫正完成，调整了 {changes_count} 个章节")
+                
+                # 更新当前章节列表为矫正后的结果
+                current_chapters = corrected_chapters
+                
+                # 记录本轮矫正信息
+                correction_rounds.append({
+                    "round": round_num,
+                    "changes": changes_count,
+                    "issues": issues
+                })
+            else:
+                print(f"  ℹ️ 第{round_num}次矫正无需调整，章节顺序已最优")
+                correction_rounds.append({
+                    "round": round_num,
+                    "changes": 0,
+                    "issues": issues
+                })
+            
+            # 收集所有问题
+            if issues:
+                all_issues.extend(issues)
         
-        # 生成报告
+        # 检查最终是否有变化
+        original_order = [ch["title"] for ch in downloaded_chapters]
+        final_order = [ch["title"] for ch in current_chapters]
+        has_final_changes = original_order != final_order
+        
+        # 生成详细报告
         report_lines = []
         report_lines.append("=== 📚 下载后章节矫正报告 ===")
         
@@ -1123,29 +1166,36 @@ def apply_post_download_correction(downloaded_chapters, book_info=None):
             report_lines.append(f"书籍: {book_info.get('book_name', '未知')}")
         
         report_lines.append(f"总章节数: {len(downloaded_chapters)}")
+        report_lines.append(f"矫正轮次: 3次迭代优化")
         
-        if has_changes:
+        if has_final_changes:
             report_lines.append("✅ 章节顺序已重新优化")
+            report_lines.append(f"总共调整了 {total_changes} 个章节的位置")
             
-            # 显示关键变化
-            changes_count = sum(1 for o, c in zip(original_order, corrected_order) if o != c)
-            report_lines.append(f"调整了 {changes_count} 个章节的位置")
+            # 显示每轮矫正的详情
+            for round_info in correction_rounds:
+                if round_info["changes"] > 0:
+                    report_lines.append(f"  第{round_info['round']}轮: 调整 {round_info['changes']} 个章节")
+                else:
+                    report_lines.append(f"  第{round_info['round']}轮: 无需调整")
             
-            # 显示前3个重要变化
+            # 显示前5个重要变化
             shown = 0
-            for i, (orig, corr) in enumerate(zip(original_order, corrected_order)):
-                if orig != corr and shown < 3:
-                    report_lines.append(f"  位置 {i+1}: '{orig}' → '{corr}'")
+            for i, (orig, final) in enumerate(zip(original_order, final_order)):
+                if orig != final and shown < 5:
+                    report_lines.append(f"  位置 {i+1}: '{orig}' → '{final}'")
                     shown += 1
             
-            if changes_count > 3:
-                report_lines.append(f"  ... 还有 {changes_count - 3} 个其他调整")
+            if total_changes > 5:
+                report_lines.append(f"  ... 还有 {total_changes - 5} 个其他调整")
         else:
-            report_lines.append("ℹ️ 章节顺序已是最优，无需调整")
+            report_lines.append("ℹ️ 章节顺序已是最优，3次矫正均无需调整")
         
-        if issues:
+        # 汇总所有发现的问题
+        unique_issues = list(set(all_issues))  # 去重
+        if unique_issues:
             report_lines.append("🔍 处理的问题:")
-            for issue in issues:
+            for issue in unique_issues:
                 report_lines.append(f"  - {issue}")
         
         report_lines.append("=" * 30)
@@ -1156,9 +1206,9 @@ def apply_post_download_correction(downloaded_chapters, book_info=None):
             print(report)
         
         # 如果有变化，重新构建下载章节数据
-        if has_changes:
+        if has_final_changes:
             final_chapters = []
-            for corrected_ch in corrected_chapters:
+            for corrected_ch in current_chapters:
                 # 找到对应的原始章节数据
                 original_ch = next(
                     (ch for ch in downloaded_chapters if ch.get("id") == corrected_ch["id"]), 
@@ -1172,8 +1222,10 @@ def apply_post_download_correction(downloaded_chapters, book_info=None):
                     updated_ch["corrected_index"] = len(final_chapters)
                     final_chapters.append(updated_ch)
             
+            print(f"🎉 章节矫正完成！经过3次优化，最终调整了 {total_changes} 个章节位置")
             return final_chapters, report
         else:
+            print("🎉 章节矫正完成！章节顺序已是最优状态")
             return downloaded_chapters, report
         
     except Exception as e:
