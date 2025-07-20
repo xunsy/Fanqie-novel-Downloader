@@ -72,8 +72,15 @@ jobs:
         run: |
           BUILD_VER="$(date -u +'%Y.%m.%d.%H%M')"
           echo "build_ver=$BUILD_VER" >> $GITHUB_OUTPUT
-          # 更新新的模块化结构中的版本文件
-          sed -i "s/APP_VERSION = \".*\"/APP_VERSION = \"$BUILD_VER\"/" src/config/constants.py
+          # 使用Python脚本更新版本文件，避免sed的引号问题
+          python -c "
+          import re
+          with open('src/config/constants.py', 'r', encoding='utf-8') as f:
+              content = f.read()
+          content = re.sub(r'APP_VERSION = \".*?\"', f'APP_VERSION = \"$BUILD_VER\"', content)
+          with open('src/config/constants.py', 'w', encoding='utf-8') as f:
+              f.write(content)
+          "
           echo "BUILD_VER=$BUILD_VER" >> $GITHUB_ENV
 
       - name: Setup Python
