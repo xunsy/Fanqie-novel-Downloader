@@ -1,0 +1,7 @@
+pyinstaller
+flask
+flask-cors
+requests
+beautifulsoup4
+fake-useragent
+ebooklib
