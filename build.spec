@@ -14,7 +14,7 @@ except ImportError:
 block_cipher = None
 
 a = Analysis(
-    ['GUI.py'],
+    ['gui.py'],
     pathex=[],
     binaries=[],
     datas=[
