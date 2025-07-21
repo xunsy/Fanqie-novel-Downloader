@@ -126,7 +126,7 @@ jobs:
 
 
         # Windows平台编译
-        pyinstaller --onefile --windowed --name "${app_name}" GUI.py
+        pyinstaller build.spec
 
         # 复制必要文件到dist目录
         if [ -d "dist" ]; then
