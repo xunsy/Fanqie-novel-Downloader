@@ -12,7 +12,6 @@ jobs:
     strategy:
       fail-fast: false  # 不要因为一个平台失败就取消其他平台
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]  # 多平台构建
         include:
           - os: windows-latest
             executable_suffix: .exe
@@ -92,10 +91,10 @@ jobs:
       run: |
         if [ "${{ runner.os }}" = "Linux" ]; then
           sudo apt-get update
-          sudo apt-get install -y python3-tk tk-dev
+          sudo apt-get install -y python3-tk tk-dev libxml2-dev libxslt1-dev python3-dev
         elif [ "${{ runner.os }}" = "macOS" ]; then
           brew update || true
-          brew install tcl-tk || true
+          brew install tcl-tk libxml2 libxslt || true
         fi
       shell: bash
 
