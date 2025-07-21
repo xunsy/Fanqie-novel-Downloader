@@ -123,11 +123,7 @@ jobs:
         # 创建PyInstaller配置
         app_name="TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}"
 
-        # 确保GUI.py存在
-        if [ ! -f "GUI.py" ]; then
-          echo "错误: GUI.py 文件不存在"
-          exit 1
-        fi
+
 
         # Windows平台编译
         pyinstaller --onefile --windowed --name "${app_name}" GUI.py
