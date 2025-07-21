@@ -16,7 +16,7 @@ class TomatoAPI:
             full_url = f"{self.base_url}?{urllib.parse.urlencode(params)}"
             print(f"Requesting URL: {full_url}")
             
-            response = requests.get(self.base_url, params=params, headers=self.headers, timeout=30)
+            response = requests.get(self.base_url, params=params, headers=self.headers, timeout=100)
             print(f"Response status: {response.status_code}")
             response.raise_for_status()
             
@@ -53,6 +53,7 @@ class TomatoAPI:
         return self._request(params)
 
     def search(self, keyword, tab_type='novel'):
+        # 确保搜索小说类型，不包括听书
         params = {'api': 'search', 'key': keyword, 'tab_type': tab_type}
         return self._request(params)
 
