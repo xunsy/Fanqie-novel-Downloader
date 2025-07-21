@@ -80,6 +80,9 @@ jobs:
             return f"v{VERSION}"
         EOF
 
+        # 删除8个前导空格，避免 Python 缩进错误
+        sed -i.bak 's/^        //' version.py && rm -f version.py.bak
+
         echo "Version file created:"
         cat version.py
       shell: bash
