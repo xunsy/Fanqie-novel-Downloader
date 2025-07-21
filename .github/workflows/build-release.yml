@@ -9,7 +9,20 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            executable_suffix: .exe
+            artifact_name: windows
+          - os: ubuntu-latest
+            executable_suffix: ""
+            artifact_name: linux
+          - os: macos-latest
+            executable_suffix: ""
+            artifact_name: macos
+    runs-on: ${{ matrix.os }}
     
     steps:
     - name: 检出代码
@@ -23,30 +36,37 @@ jobs:
     - name: 生成版本号
       id: version
       run: |
-        $timestamp = Get-Date -Format "yyyy.MM.dd.HHmm"
-        $commit_short = "${{ github.sha }}".Substring(0, 7)
-        $version = "$timestamp-$commit_short"
-        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-        echo "TIMESTAMP=$timestamp" >> $env:GITHUB_OUTPUT
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          timestamp=$(powershell -Command "Get-Date -Format 'yyyy.MM.dd.HHmm'")
+          commit_short="${{ github.sha }}"
+          commit_short=${commit_short:0:7}
+        else
+          timestamp=$(date +"%Y.%m.%d.%H%M")
+          commit_short="${{ github.sha }}"
+          commit_short=${commit_short:0:7}
+        fi
+        version="$timestamp-$commit_short"
+        echo "VERSION=$version" >> $GITHUB_OUTPUT
+        echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
         echo "Generated version: $version"
-      shell: powershell
+      shell: bash
       
     - name: 更新版本信息
       run: |
-        $version = "${{ steps.version.outputs.VERSION }}"
-        $timestamp = "${{ steps.version.outputs.TIMESTAMP }}"
-        
+        version="${{ steps.version.outputs.VERSION }}"
+        timestamp="${{ steps.version.outputs.TIMESTAMP }}"
+
         # 创建版本信息文件
-        @"
+        cat > version.py << EOF
         VERSION = "$version"
         BUILD_TIME = "$timestamp"
         COMMIT_HASH = "${{ github.sha }}"
         BRANCH = "${{ github.ref_name }}"
-        "@  | Out-File -FilePath "version.py" -Encoding UTF8
-        
+        EOF
+
         echo "Version file created:"
-        Get-Content "version.py"
-      shell: powershell
+        cat version.py
+      shell: bash
       
     - name: 安装依赖
       run: |
@@ -57,75 +77,116 @@ jobs:
     - name: 编译可执行文件
       run: |
         # 创建PyInstaller配置
-        pyinstaller --onefile --windowed --name "TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}" GUI.py
-        
+        app_name="TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}"
+
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          pyinstaller --onefile --windowed --name "${app_name}" GUI.py
+        else
+          pyinstaller --onefile --name "${app_name}" GUI.py
+        fi
+
         # 复制必要文件到dist目录
-        if (Test-Path "dist") {
-          Copy-Item "README.md" "dist/" -ErrorAction SilentlyContinue
-          Copy-Item "requirements.txt" "dist/" -ErrorAction SilentlyContinue
-          Copy-Item "version.py" "dist/" -ErrorAction SilentlyContinue
-        }
-      shell: powershell
+        if [ -d "dist" ]; then
+          cp README.md dist/ 2>/dev/null || true
+          cp requirements.txt dist/ 2>/dev/null || true
+          cp version.py dist/ 2>/dev/null || true
+        fi
+      shell: bash
       
     - name: 创建发布包
       run: |
-        $version = "${{ steps.version.outputs.VERSION }}"
-        
+        version="${{ steps.version.outputs.VERSION }}"
+        artifact_name="${{ matrix.artifact_name }}"
+
         # 创建发布目录
-        New-Item -ItemType Directory -Path "release" -Force
-        
+        mkdir -p release
+
         # 压缩文件
-        Compress-Archive -Path "dist/*" -DestinationPath "release/TomatoNovelDownloader-$version.zip"
-        
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          powershell -Command "Compress-Archive -Path 'dist/*' -DestinationPath 'release/TomatoNovelDownloader-$version-$artifact_name.zip'"
+        else
+          cd dist && zip -r "../release/TomatoNovelDownloader-$version-$artifact_name.zip" . && cd ..
+        fi
+
         # 创建更新信息文件
-        @"
+        cat > "release/update_info_$artifact_name.json" << EOF
         {
           "version": "$version",
+          "platform": "$artifact_name",
           "build_time": "${{ steps.version.outputs.TIMESTAMP }}",
-          "download_url": "https://github.com/${{ github.repository }}/releases/download/v$version/TomatoNovelDownloader-$version.zip",
+          "download_url": "https://github.com/${{ github.repository }}/releases/download/v$version/TomatoNovelDownloader-$version-$artifact_name.zip",
           "changelog": "自动构建版本 $version",
-          "size": $(Get-Item "release/TomatoNovelDownloader-$version.zip").Length,
           "commit": "${{ github.sha }}",
           "branch": "${{ github.ref_name }}"
         }
-        "@ | Out-File -FilePath "release/update_info.json" -Encoding UTF8
-        
+        EOF
+
         echo "Release package created:"
-        Get-ChildItem "release"
-      shell: powershell
+        ls -la release/
+      shell: bash
       
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
-        name: TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}
+        name: TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}
         path: release/
         
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 生成版本号
+      id: version
+      run: |
+        timestamp=$(date +"%Y.%m.%d.%H%M")
+        commit_short="${{ github.sha }}"
+        commit_short=${commit_short:0:7}
+        version="$timestamp-$commit_short"
+        echo "VERSION=$version" >> $GITHUB_OUTPUT
+        echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
+
+    - name: 下载所有构建产物
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: 整理发布文件
+      run: |
+        mkdir -p release
+        find artifacts/ -name "*.zip" -exec cp {} release/ \;
+        find artifacts/ -name "*.json" -exec cp {} release/ \;
+        ls -la release/
+
     - name: 创建Release
-      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.version.outputs.VERSION }}
         name: TomatoNovelDownloader v${{ steps.version.outputs.VERSION }}
         body: |
-          ## 🚀 自动构建版本 ${{ steps.version.outputs.VERSION }}
-          
+          ## 🚀 多平台自动构建版本 ${{ steps.version.outputs.VERSION }}
+
           **构建信息:**
           - 构建时间: ${{ steps.version.outputs.TIMESTAMP }}
           - 提交哈希: ${{ github.sha }}
           - 分支: ${{ github.ref_name }}
-          
-          **下载说明:**
-          - 下载 `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}.zip`
-          - 解压后运行 `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}.exe`
-          
+
+          **支持平台:**
+          - 🪟 Windows: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-windows.zip`
+          - 🐧 Linux: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-linux.zip`
+          - 🍎 macOS: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-macos.zip`
+
           **更新内容:**
           - 基于最新代码自动构建
-          - 修复已知问题
-          - 性能优化
-          
-        files: |
-          release/TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}.zip
-          release/update_info.json
+          - 支持多平台并行编译
+          - 修复已知问题和性能优化
+
+        files: release/*
         draft: false
         prerelease: false
       env:
