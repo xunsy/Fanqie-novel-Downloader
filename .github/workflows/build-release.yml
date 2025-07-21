@@ -60,10 +60,8 @@ jobs:
         # 创建版本信息文件
         cat > version.py << EOF
 # -*- coding: utf-8 -*-
-"""
-版本信息文件 - 由GitHub Actions自动生成
-构建时间: $timestamp
-"""
+# 版本信息文件 - 由GitHub Actions自动生成
+# 构建时间: $timestamp
 
 VERSION = "$version"
 BUILD_TIME = "$timestamp"
@@ -71,7 +69,6 @@ COMMIT_HASH = "${{ github.sha }}"
 BRANCH = "${{ github.ref_name }}"
 
 def get_version_info():
-    """获取完整版本信息"""
     return {
         'version': VERSION,
         'build_time': BUILD_TIME,
@@ -80,7 +77,6 @@ def get_version_info():
     }
 
 def get_version_string():
-    """获取版本字符串"""
     return f"v{VERSION}"
 EOF
 

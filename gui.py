@@ -58,24 +58,49 @@ class BeautifulApp(tk.Tk):
         # 启动时检查更新（后台进行）
         threading.Thread(target=self.check_updates_on_startup, daemon=True).start()
 
+    def get_display_version(self):
+        """获取用于显示的版本号"""
+        try:
+            # 尝试从updater获取真实版本号
+            from updater import AutoUpdater
+            updater = AutoUpdater(repo_url="POf-L/Fanqie-novel-Downloader")
+            version = updater.get_current_version()
+            return f"v{version}"
+        except Exception as e:
+            # 如果获取失败，使用本地版本
+            try:
+                import version
+                return f"v{version.VERSION}"
+            except:
+                return "v-dev"
+
+    def update_version_display(self):
+        """更新版本号显示"""
+        try:
+            version_text = self.get_display_version()
+            if hasattr(self, 'version_label'):
+                self.version_label.config(text=version_text)
+        except Exception as e:
+            print(f"更新版本显示失败: {e}")
+
     def setup_window(self):
         """设置窗口尺寸和位置，自动适配屏幕"""
         # 获取屏幕尺寸
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        
+
         # 设置窗口为屏幕的75%，但不超过合理的最大值
         window_width = min(int(screen_width * 0.75), 1400)
         window_height = min(int(screen_height * 0.75), 900)
-        
+
         # 设置最小尺寸
         min_width = min(300, int(screen_width * 0.6))
         min_height = min(700, int(screen_height * 0.6))
-        
+
         # 居中显示
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
-        
+
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.minsize(min_width, min_height)
         self.title("🍅 番茄小说下载器 - 现代版")
@@ -209,13 +234,14 @@ class BeautifulApp(tk.Tk):
                                  bg=self.colors['bg_primary'])
         subtitle_label.pack(side='left', padx=(20, 0), pady=(8, 0))
         
-        # 版本信息
-        version_label = tk.Label(header_frame,
-                                text="v2.1",
-                                font=('Segoe UI', 12),
-                                fg=self.colors['text_muted'],
-                                bg=self.colors['bg_primary'])
-        version_label.pack(side='right', pady=(8, 0))
+        # 版本信息 - 动态获取
+        version_text = self.get_display_version()
+        self.version_label = tk.Label(header_frame,
+                                     text=version_text,
+                                     font=('Segoe UI', 12),
+                                     fg=self.colors['text_muted'],
+                                     bg=self.colors['bg_primary'])
+        self.version_label.pack(side='right', pady=(8, 0))
 
     def create_search_section(self, parent):
         """创建搜索区域"""
@@ -880,9 +906,15 @@ class BeautifulApp(tk.Tk):
             import time
             time.sleep(2)  # 等待界面完全加载
 
+            # 先更新版本显示
+            self.update_version_display()
+
             from updater import check_and_update
             # GitHub仓库地址
             check_and_update(self, repo_url="POf-L/Fanqie-novel-Downloader")
+
+            # 检查更新后再次更新版本显示
+            self.update_version_display()
         except Exception as e:
             print(f"检查更新失败: {str(e)}")
 
@@ -891,6 +923,8 @@ class BeautifulApp(tk.Tk):
         try:
             from updater import check_and_update
             check_and_update(self, repo_url="POf-L/Fanqie-novel-Downloader")
+            # 检查更新后更新版本显示
+            self.update_version_display()
         except Exception as e:
             messagebox.showerror("检查更新失败", f"无法检查更新:\n{str(e)}")
 
