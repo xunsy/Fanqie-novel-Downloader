@@ -16,7 +16,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: 设置Python环境
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
         
@@ -57,7 +57,7 @@ jobs:
     - name: 编译可执行文件
       run: |
         # 创建PyInstaller配置
-        pyinstaller --onefile --windowed --name "TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}" --icon=icon.ico GUI.py
+        pyinstaller --onefile --windowed --name "TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}" GUI.py
         
         # 复制必要文件到dist目录
         if (Test-Path "dist") {
@@ -95,7 +95,7 @@ jobs:
       shell: powershell
       
     - name: 上传构建产物
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}
         path: release/
@@ -131,36 +131,4 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: 更新最新版本信息
-      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-      run: |
-        # 创建最新版本信息文件
-        $version = "${{ steps.version.outputs.VERSION }}"
-        @"
-        {
-          "latest_version": "$version",
-          "update_time": "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
-          "download_url": "https://github.com/${{ github.repository }}/releases/download/v$version/TomatoNovelDownloader-$version.zip",
-          "update_info_url": "https://github.com/${{ github.repository }}/releases/download/v$version/update_info.json",
-          "changelog_url": "https://github.com/${{ github.repository }}/releases/tag/v$version"
-        }
-        "@ | Out-File -FilePath "latest.json" -Encoding UTF8
-        
-        # 提交到gh-pages分支（用于版本检查）
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        
-        # 切换到gh-pages分支
-        git fetch origin gh-pages:gh-pages 2>$null || git checkout --orphan gh-pages
-        git checkout gh-pages
-        
-        # 清理除了latest.json的所有文件
-        Get-ChildItem -Exclude "latest.json" | Remove-Item -Recurse -Force
-        
-        # 添加并提交latest.json
-        git add latest.json
-        git commit -m "Update latest version to $version" || echo "No changes to commit"
-        git push origin gh-pages
-      shell: powershell
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
