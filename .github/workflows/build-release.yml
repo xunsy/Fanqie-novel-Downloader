@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false  # 不要因为一个平台失败就取消其他平台
       matrix:
-        os: [windows-latest]  # 先只构建Windows版本，稳定后再添加其他平台
+        os: [windows-latest, ubuntu-latest, macos-latest]  # 多平台构建
         include:
           - os: windows-latest
             executable_suffix: .exe
@@ -124,8 +124,13 @@ jobs:
         # 创建发布目录
         mkdir -p release
 
-        # 压缩文件 (Windows)
-        powershell -Command "Compress-Archive -Path 'dist/*' -DestinationPath 'release/TomatoNovelDownloader-$version-$artifact_name.zip'"
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          # Windows 使用 PowerShell 自带的 Compress-Archive
+          powershell -Command "Compress-Archive -Path 'dist/*' -DestinationPath 'release/TomatoNovelDownloader-$version-$artifact_name.zip'"
+        else
+          # Linux/macOS 使用 zip 命令
+          zip -r "release/TomatoNovelDownloader-$version-$artifact_name.zip" dist/*
+        fi
 
         # 创建更新信息文件
         cat > "release/update_info_$artifact_name.json" << EOF
