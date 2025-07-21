@@ -59,19 +59,45 @@ jobs:
 
         # 创建版本信息文件
         cat > version.py << EOF
-        VERSION = "$version"
-        BUILD_TIME = "$timestamp"
-        COMMIT_HASH = "${{ github.sha }}"
-        BRANCH = "${{ github.ref_name }}"
-        EOF
+# -*- coding: utf-8 -*-
+"""
+版本信息文件 - 由GitHub Actions自动生成
+构建时间: $timestamp
+"""
+
+VERSION = "$version"
+BUILD_TIME = "$timestamp"
+COMMIT_HASH = "${{ github.sha }}"
+BRANCH = "${{ github.ref_name }}"
+
+def get_version_info():
+    """获取完整版本信息"""
+    return {
+        'version': VERSION,
+        'build_time': BUILD_TIME,
+        'commit_hash': COMMIT_HASH,
+        'branch': BRANCH
+    }
+
+def get_version_string():
+    """获取版本字符串"""
+    return f"v{VERSION}"
+EOF
 
         echo "Version file created:"
         cat version.py
       shell: bash
       
     - name: 安装系统依赖
+      if: runner.os != 'Windows'
       run: |
-        echo "Windows平台，tkinter已内置，无需额外安装"
+        if [ "${{ runner.os }}" = "Linux" ]; then
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk-dev
+        elif [ "${{ runner.os }}" = "macOS" ]; then
+          brew update || true
+          brew install tcl-tk || true
+        fi
       shell: bash
 
     - name: 安装Python依赖

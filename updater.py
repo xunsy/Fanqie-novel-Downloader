@@ -37,7 +37,21 @@ class AutoUpdater:
         self.latest_info_url = None
         
     def get_current_version(self):
-        """获取当前版本号"""
+        """获取当前版本号 - 优先从GitHub获取，fallback到本地"""
+        try:
+            # 首先尝试从GitHub获取当前运行版本的tag
+            # 这样确保版本号与发布版本完全一致
+            response = requests.get(f"{self.api_base}/releases", timeout=5)
+            if response.status_code == 200:
+                releases = response.json()
+                if releases:
+                    # 获取最新的release作为当前版本
+                    latest_release = releases[0]
+                    return latest_release['tag_name'].replace('v', '')
+        except:
+            pass
+
+        # Fallback到本地版本文件
         try:
             import version
             return version.VERSION

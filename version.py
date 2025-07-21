@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 版本信息文件
-由GitHub Actions自动生成和更新
+注意：实际版本号由GitHub Actions自动生成，此文件仅作为fallback
 """
 
-VERSION = "2025.01.21.1200-dev"
-BUILD_TIME = "2025.01.21.1200"
+VERSION = "dev-local"  # 开发版本标识
+BUILD_TIME = "local"
 COMMIT_HASH = "development"
 BRANCH = "main"
 
