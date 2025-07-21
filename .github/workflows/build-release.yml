@@ -58,27 +58,27 @@ jobs:
         timestamp="${{ steps.version.outputs.TIMESTAMP }}"
 
         # 创建版本信息文件
-        cat > version.py << EOF
-# -*- coding: utf-8 -*-
-# 版本信息文件 - 由GitHub Actions自动生成
-# 构建时间: $timestamp
+        cat > version.py << 'EOF'
+        # -*- coding: utf-8 -*-
+        # 版本信息文件 - 由GitHub Actions自动生成
+        # 构建时间: $timestamp
 
-VERSION = "$version"
-BUILD_TIME = "$timestamp"
-COMMIT_HASH = "${{ github.sha }}"
-BRANCH = "${{ github.ref_name }}"
+        VERSION="$version"
+        BUILD_TIME="$timestamp"
+        COMMIT_HASH="${{ github.sha }}"
+        BRANCH="${{ github.ref_name }}"
 
-def get_version_info():
-    return {
-        'version': VERSION,
-        'build_time': BUILD_TIME,
-        'commit_hash': COMMIT_HASH,
-        'branch': BRANCH
-    }
+        def get_version_info():
+            return {
+                'version': VERSION,
+                'build_time': BUILD_TIME,
+                'commit_hash': COMMIT_HASH,
+                'branch': BRANCH
+            }
 
-def get_version_string():
-    return f"v{VERSION}"
-EOF
+        def get_version_string():
+            return f"v{VERSION}"
+        EOF
 
         echo "Version file created:"
         cat version.py
