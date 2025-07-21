@@ -119,6 +119,7 @@ jobs:
       shell: bash
 
     - name: 编译可执行文件
+      working-directory: Fanqie-novel-Downloader
       run: |
         # 创建PyInstaller配置
         app_name="TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}"
