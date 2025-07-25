@@ -129,11 +129,18 @@ jobs:
           pyinstaller build.spec
         else
           # 创建基本的pyinstaller命令
-          pyinstaller --onefile --windowed \
-            --name="$app_name" \
-            --add-data="version.py:." \
-            --icon="icon.ico" \
-            gui.py
+          if [ -f "icon.ico" ]; then
+            pyinstaller --onefile --windowed \
+              --name="$app_name" \
+              --add-data="version.py:." \
+              --icon="icon.ico" \
+              gui.py
+          else
+            pyinstaller --onefile --windowed \
+              --name="$app_name" \
+              --add-data="version.py:." \
+              gui.py
+          fi
         fi
 
         # 复制必要文件到dist目录
