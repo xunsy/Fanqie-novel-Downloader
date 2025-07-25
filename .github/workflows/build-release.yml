@@ -110,11 +110,11 @@ jobs:
         ls -la
         echo "查找Python文件:"
         find . -name "*.py" -type f
-        echo "检查GUI.py是否存在:"
-        if [ -f "GUI.py" ]; then
-          echo "✅ GUI.py 存在"
+        echo "检查gui.py是否存在:"
+        if [ -f "gui.py" ]; then
+          echo "✅ gui.py 存在"
         else
-          echo "❌ GUI.py 不存在"
+          echo "❌ gui.py 不存在"
         fi
       shell: bash
 
@@ -123,16 +123,26 @@ jobs:
         # 创建PyInstaller配置
         app_name="TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}"
 
-
-
-        # Windows平台编译
-        pyinstaller build.spec
+        # 根据平台编译
+        if [ -f "build.spec" ]; then
+          # 使用现有的build.spec
+          pyinstaller build.spec
+        else
+          # 创建基本的pyinstaller命令
+          pyinstaller --onefile --windowed \
+            --name="$app_name" \
+            --add-data="version.py:." \
+            --icon="icon.ico" \
+            gui.py
+        fi
 
         # 复制必要文件到dist目录
         if [ -d "dist" ]; then
           cp README.md dist/ 2>/dev/null || true
           cp requirements.txt dist/ 2>/dev/null || true
           cp version.py dist/ 2>/dev/null || true
+          cp tomato_novel_api.py dist/ 2>/dev/null || true
+          cp updater.py dist/ 2>/dev/null || true
         fi
       shell: bash
       
@@ -213,23 +223,20 @@ jobs:
         tag_name: v${{ steps.version.outputs.VERSION }}
         name: TomatoNovelDownloader v${{ steps.version.outputs.VERSION }}
         body: |
-          ## 🚀 Windows自动构建版本 ${{ steps.version.outputs.VERSION }}
+          ## 🚀 自动构建版本 ${{ steps.version.outputs.VERSION }}
 
           **构建信息:**
           - 构建时间: ${{ steps.version.outputs.TIMESTAMP }}
           - 提交哈希: ${{ github.sha }}
           - 分支: ${{ github.ref_name }}
-          - 平台: Windows x64
 
           **下载说明:**
-          - 下载: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-windows.zip`
-          - 解压后运行 `.exe` 文件即可使用
+          - Windows: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-windows.zip`
+          - Linux: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-linux.zip`
+          - macOS: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-macos.zip`
 
           **更新内容:**
-          - 基于最新代码自动构建
-          - 修复API批次限制问题（30章/批次）
-          - 优化章节完整性验证
-          - 改进自动更新系统
+          ${{ github.event.head_commit.message }}
 
         files: release/*
         draft: false

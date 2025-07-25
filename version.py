@@ -1,16 +1,47 @@
 # -*- coding: utf-8 -*-
-"""
-版本信息文件
-注意：实际版本号由GitHub Actions自动生成，此文件仅作为fallback
-"""
+# 版本信息文件 - 支持GitHub Actions动态生成
 
-VERSION = "dev-local"  # 开发版本标识
-BUILD_TIME = "local"
-COMMIT_HASH = "development"
-BRANCH = "main"
+import os
+import subprocess
+from datetime import datetime
+
+# 默认版本信息（本地开发时使用）
+DEFAULT_VERSION = "2024.07.25.1900"
+DEFAULT_BUILD_TIME = "2024.07.25.1900"
+DEFAULT_COMMIT_HASH = "local-dev"
+DEFAULT_BRANCH = "main"
+
+def get_git_info():
+    """获取Git信息"""
+    try:
+        # 获取commit hash
+        commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], 
+                                            stderr=subprocess.DEVNULL).decode().strip()[:7]
+        
+        # 获取分支名
+        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+                                       stderr=subprocess.DEVNULL).decode().strip()
+        
+        # 生成时间戳版本号
+        timestamp = datetime.now().strftime("%Y.%m.%d.%H%M")
+        version = f"{timestamp}-{commit_hash}"
+        
+        return {
+            'version': version,
+            'build_time': timestamp,
+            'commit_hash': commit_hash,
+            'branch': branch
+        }
+    except:
+        return None
+
+# 优先从环境变量获取（GitHub Actions设置），其次从Git获取，最后使用默认值
+VERSION = os.getenv('VERSION') or (get_git_info() or {}).get('version', DEFAULT_VERSION)
+BUILD_TIME = os.getenv('BUILD_TIME') or (get_git_info() or {}).get('build_time', DEFAULT_BUILD_TIME)
+COMMIT_HASH = os.getenv('COMMIT_HASH') or (get_git_info() or {}).get('commit_hash', DEFAULT_COMMIT_HASH)
+BRANCH = os.getenv('BRANCH') or (get_git_info() or {}).get('branch', DEFAULT_BRANCH)
 
 def get_version_info():
-    """获取完整版本信息"""
     return {
         'version': VERSION,
         'build_time': BUILD_TIME,
@@ -19,11 +50,4 @@ def get_version_info():
     }
 
 def get_version_string():
-    """获取版本字符串"""
     return f"v{VERSION}"
-
-if __name__ == '__main__':
-    print(f"版本: {VERSION}")
-    print(f"构建时间: {BUILD_TIME}")
-    print(f"提交哈希: {COMMIT_HASH}")
-    print(f"分支: {BRANCH}")

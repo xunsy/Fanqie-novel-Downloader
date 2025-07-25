@@ -1,410 +1,390 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
-自动更新模块
-检查GitHub Releases的最新版本并提供更新功能
+番茄小说下载器 - 自动更新系统
 """
 
 import requests
 import json
 import os
 import sys
-import zipfile
-import tempfile
-import shutil
-import subprocess
-from pathlib import Path
-from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox, ttk
 import threading
+import zipfile
+import shutil
+import subprocess
+import tempfile
+from typing import Dict, Optional
+import platform
+
 
 class AutoUpdater:
-    def __init__(self, current_version=None, repo_url=""):
-        self.current_version = current_version or self.get_current_version()
-        self.repo_url = repo_url.rstrip('/')
-
-        # 处理不同格式的repo_url
-        if repo_url.startswith('https://github.com/'):
-            # 完整URL格式: https://github.com/POf-L/Fanqie-novel-Downloader
-            repo_path = repo_url.replace('https://github.com/', '')
-        else:
-            # 简短格式: POf-L/Fanqie-novel-Downloader
-            repo_path = repo_url
-
-        self.api_base = f"https://api.github.com/repos/{repo_path}"
-        # 不使用GitHub Pages，直接使用GitHub API
-        self.latest_info_url = None
+    def __init__(self, current_version: str = "1.0.0", repo_owner: str = "", repo_name: str = ""):
+        self.current_version = current_version
+        self.repo_owner = repo_owner or "POf-L"  # GitHub用户名
+        self.repo_name = repo_name or "Fanqie-novel-Downloader"  # 仓库名
+        self.github_api_base = "https://api.github.com"
+        self.update_url = f"{self.github_api_base}/repos/{self.repo_owner}/{self.repo_name}/releases/latest"
         
-    def get_current_version(self):
-        """获取当前版本号 - 优先从GitHub获取，fallback到本地"""
-        try:
-            # 首先尝试从GitHub获取当前运行版本的tag
-            # 这样确保版本号与发布版本完全一致
-            response = requests.get(f"{self.api_base}/releases", timeout=5)
-            if response.status_code == 200:
-                releases = response.json()
-                if releases:
-                    # 获取最新的release作为当前版本
-                    latest_release = releases[0]
-                    return latest_release['tag_name'].replace('v', '')
-        except:
-            pass
-
-        # Fallback到本地版本文件
-        try:
-            import version
-            return version.VERSION
-        except ImportError:
-            return "0.0.0.0000"
+        # 检测当前平台
+        self.platform = self._detect_platform()
+        
+    def _detect_platform(self) -> str:
+        """检测当前运行平台"""
+        system = platform.system().lower()
+        if system == "windows":
+            return "windows"
+        elif system == "darwin":
+            return "macos"
+        elif system == "linux":
+            return "linux"
+        else:
+            return "unknown"
     
-    def check_for_updates(self):
-        """检查是否有新版本"""
+    def check_for_updates(self) -> Optional[Dict]:
+        """检查是否有新版本可用"""
         try:
-            # 直接从GitHub Releases API获取最新版本
-            response = requests.get(f"{self.api_base}/releases/latest", timeout=10)
-            if response.status_code == 200:
-                release_info = response.json()
-                latest_version = release_info['tag_name'].replace('v', '')
-
-                if self.is_newer_version(latest_version, self.current_version):
-                    # 查找下载链接
-                    download_url = None
-                    for asset in release_info.get('assets', []):
-                        if asset['name'].endswith('.zip'):
-                            download_url = asset['browser_download_url']
-                            break
-
-                    # 获取git提交日志作为更新日志
-                    changelog = self.get_git_changelog(latest_version)
-
+            headers = {
+                'User-Agent': 'TomatoNovelDownloader-Updater',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            
+            response = requests.get(self.update_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            release_info = response.json()
+            latest_version = release_info['tag_name'].lstrip('v')
+            
+            # 比较版本号
+            if self._is_newer_version(latest_version, self.current_version):
+                # 查找适合当前平台的下载链接
+                download_url = self._find_platform_download(release_info['assets'])
+                
+                if download_url:
                     return {
-                        'has_update': True,
-                        'latest_version': latest_version,
+                        'version': latest_version,
                         'download_url': download_url,
-                        'changelog_url': release_info.get('html_url'),
-                        'update_time': release_info.get('published_at'),
-                        'changelog': changelog,
-                        'release_notes': release_info.get('body', '')
+                        'changelog': release_info.get('body', ''),
+                        'published_at': release_info.get('published_at', ''),
+                        'name': release_info.get('name', f'v{latest_version}')
                     }
-
-            return {'has_update': False}
-
+            
+            return None
+            
         except Exception as e:
-            print(f"检查更新失败: {str(e)}")
-            return {'has_update': False, 'error': str(e)}
-
-    def get_git_changelog(self, version):
-        """获取git提交日志作为更新日志"""
-        try:
-            # 获取当前版本到最新版本之间的提交
-            commits_url = f"{self.api_base}/commits"
-            response = requests.get(commits_url, params={'per_page': 10}, timeout=10)
-
-            if response.status_code == 200:
-                commits = response.json()
-                changelog_lines = []
-
-                for commit in commits[:5]:  # 只显示最近5个提交
-                    message = commit['commit']['message'].split('\n')[0]  # 只取第一行
-                    author = commit['commit']['author']['name']
-                    date = commit['commit']['author']['date'][:10]  # 只取日期部分
-
-                    changelog_lines.append(f"• {message} ({author}, {date})")
-
-                return '\n'.join(changelog_lines)
-
-        except Exception as e:
-            print(f"获取git日志失败: {str(e)}")
-
-        return "• 基于最新代码自动构建\n• 修复已知问题和Bug\n• 性能优化和改进"
+            print(f"检查更新失败: {e}")
+            return None
     
-    def is_newer_version(self, latest, current):
+    def _is_newer_version(self, latest: str, current: str) -> bool:
         """比较版本号"""
         try:
-            # 版本格式: 2025.01.21.1152-abc1234
+            # 简单的版本号比较，支持格式：YYYY.MM.DD.HHMM-xxxxxxx
             latest_parts = latest.split('-')[0].split('.')
             current_parts = current.split('-')[0].split('.')
             
-            # 补齐到4位
-            while len(latest_parts) < 4:
-                latest_parts.append('0')
-            while len(current_parts) < 4:
-                current_parts.append('0')
+            # 补齐版本号部分
+            max_len = max(len(latest_parts), len(current_parts))
+            latest_parts.extend(['0'] * (max_len - len(latest_parts)))
+            current_parts.extend(['0'] * (max_len - len(current_parts)))
             
-            for i in range(4):
-                latest_num = int(latest_parts[i])
-                current_num = int(current_parts[i])
-                
-                if latest_num > current_num:
+            for l, c in zip(latest_parts, current_parts):
+                l_num = int(l)
+                c_num = int(c)
+                if l_num > c_num:
                     return True
-                elif latest_num < current_num:
+                elif l_num < c_num:
                     return False
             
+            # 如果版本号相同，比较提交哈希
+            if '-' in latest and '-' in current:
+                latest_hash = latest.split('-')[1]
+                current_hash = current.split('-')[1]
+                return latest_hash != current_hash
+            
             return False
-        except:
+            
+        except Exception:
+            # 如果比较失败，假设有新版本
             return latest != current
     
-    def download_update(self, download_url, progress_callback=None):
-        """下载更新文件"""
-        try:
-            response = requests.get(download_url, stream=True, timeout=30)
-            response.raise_for_status()
-            
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-            
-            # 创建临时文件
-            temp_dir = tempfile.mkdtemp()
-            temp_file = os.path.join(temp_dir, 'update.zip')
-            
-            with open(temp_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        
-                        if progress_callback and total_size > 0:
-                            progress = (downloaded / total_size) * 100
-                            progress_callback(progress)
-            
-            return temp_file
-            
-        except Exception as e:
-            raise Exception(f"下载失败: {str(e)}")
+    def _find_platform_download(self, assets: list) -> Optional[str]:
+        """查找适合当前平台的下载链接"""
+        for asset in assets:
+            name = asset['name'].lower()
+            if self.platform in name and name.endswith('.zip'):
+                return asset['browser_download_url']
+        return None
     
-    def install_update(self, zip_file_path):
-        """安装更新"""
+    def show_update_dialog(self, update_info: Dict) -> bool:
+        """显示更新对话框"""
+        root = tk.Tk()
+        root.withdraw()  # 隐藏主窗口
+        
+        result = {'update': False}
+        
+        def create_dialog():
+            dialog = tk.Toplevel()
+            dialog.title("发现新版本")
+            dialog.geometry("500x400")
+            dialog.resizable(False, False)
+            dialog.grab_set()
+            
+            # 居中显示
+            dialog.transient(root)
+            
+            # 标题
+            title_label = tk.Label(dialog, text=f"🎉 发现新版本 {update_info['version']}", 
+                                  font=('Microsoft YaHei', 14, 'bold'))
+            title_label.pack(pady=20)
+            
+            # 信息框架
+            info_frame = tk.Frame(dialog)
+            info_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+            
+            # 版本信息
+            version_info = f"当前版本: {self.current_version}\n新版本: {update_info['version']}\n发布时间: {update_info['published_at'][:10]}"
+            version_label = tk.Label(info_frame, text=version_info, justify=tk.LEFT)
+            version_label.pack(anchor='w', pady=(0, 10))
+            
+            # 更新日志
+            tk.Label(info_frame, text="更新内容:", font=('Microsoft YaHei', 10, 'bold')).pack(anchor='w')
+            
+            changelog_frame = tk.Frame(info_frame)
+            changelog_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 15))
+            
+            changelog_text = tk.Text(changelog_frame, wrap=tk.WORD, height=8)
+            scrollbar = tk.Scrollbar(changelog_frame, orient=tk.VERTICAL, command=changelog_text.yview)
+            changelog_text.configure(yscrollcommand=scrollbar.set)
+            
+            changelog_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            changelog_text.insert(tk.END, update_info['changelog'])
+            changelog_text.config(state=tk.DISABLED)
+            
+            # 按钮框架
+            button_frame = tk.Frame(dialog)
+            button_frame.pack(fill=tk.X, padx=20, pady=20)
+            
+            def update_now():
+                result['update'] = True
+                dialog.destroy()
+                root.quit()
+            
+            def skip_update():
+                result['update'] = False
+                dialog.destroy()
+                root.quit()
+            
+            update_btn = tk.Button(button_frame, text="🚀 立即更新", 
+                                 command=update_now, bg='#4CAF50', fg='white',
+                                 font=('Microsoft YaHei', 10, 'bold'), padx=20)
+            update_btn.pack(side=tk.LEFT, padx=(0, 10))
+            
+            skip_btn = tk.Button(button_frame, text="❌ 跳过此版本", 
+                               command=skip_update, bg='#f44336', fg='white',
+                               font=('Microsoft YaHei', 10, 'bold'), padx=20)
+            skip_btn.pack(side=tk.RIGHT)
+            
+            # 关闭窗口时的处理
+            dialog.protocol("WM_DELETE_WINDOW", skip_update)
+            
+            # 运行对话框
+            root.mainloop()
+        
+        create_dialog()
+        root.destroy()
+        
+        return result['update']
+    
+    def download_and_install_update(self, update_info: Dict, progress_callback=None):
+        """下载并安装更新"""
         try:
-            # 获取当前程序目录
-            current_dir = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path.cwd()
+            # 创建临时目录
+            temp_dir = tempfile.mkdtemp()
             
-            # 创建备份目录
-            backup_dir = current_dir / 'backup'
-            backup_dir.mkdir(exist_ok=True)
+            # 下载文件
+            if progress_callback:
+                progress_callback(10, "开始下载更新...")
             
-            # 解压更新文件
-            temp_extract_dir = tempfile.mkdtemp()
+            zip_path = os.path.join(temp_dir, "update.zip")
+            self._download_file(update_info['download_url'], zip_path, progress_callback)
             
-            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract_dir)
+            if progress_callback:
+                progress_callback(70, "解压更新文件...")
             
-            # 查找可执行文件
-            exe_files = list(Path(temp_extract_dir).rglob('*.exe'))
-            if not exe_files:
-                raise Exception("更新包中未找到可执行文件")
+            # 解压文件
+            extract_dir = os.path.join(temp_dir, "extracted")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
             
-            new_exe = exe_files[0]
-            current_exe = Path(sys.executable) if getattr(sys, 'frozen', False) else Path('GUI.py')
+            if progress_callback:
+                progress_callback(90, "安装更新...")
             
-            # 备份当前版本
-            if current_exe.exists():
-                backup_file = backup_dir / f"{current_exe.stem}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}{current_exe.suffix}"
-                shutil.copy2(current_exe, backup_file)
+            # 安装更新
+            self._install_update(extract_dir)
             
-            # 创建更新脚本
-            update_script = current_dir / 'update.bat'
-            script_content = f'''@echo off
-echo 正在更新程序...
-timeout /t 2 /nobreak >nul
-copy /Y "{new_exe}" "{current_exe}"
-echo 更新完成！
-start "" "{current_exe}"
-del "%~f0"
-'''
+            if progress_callback:
+                progress_callback(100, "更新完成！")
             
-            with open(update_script, 'w', encoding='gbk') as f:
-                f.write(script_content)
-            
-            # 启动更新脚本并退出当前程序
-            subprocess.Popen([str(update_script)], shell=True)
             return True
             
         except Exception as e:
-            raise Exception(f"安装更新失败: {str(e)}")
-
-class UpdateDialog:
-    def __init__(self, parent, update_info):
-        self.update_info = update_info
-        self.result = False
+            print(f"更新失败: {e}")
+            if progress_callback:
+                progress_callback(-1, f"更新失败: {str(e)}")
+            return False
+        finally:
+            # 清理临时文件
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+    
+    def _download_file(self, url: str, filepath: str, progress_callback=None):
+        """下载文件"""
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
         
-        # 创建对话框
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("发现新版本")
-        self.dialog.geometry("500x400")
-        self.dialog.resizable(False, False)
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+        
+        with open(filepath, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    
+                    if progress_callback and total_size > 0:
+                        progress = 10 + (downloaded / total_size) * 60  # 10-70%
+                        progress_callback(progress, f"下载中... {downloaded/1024/1024:.1f}MB/{total_size/1024/1024:.1f}MB")
+    
+    def _install_update(self, extract_dir: str):
+        """安装更新"""
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 查找解压目录中的可执行文件或Python文件
+        for root, dirs, files in os.walk(extract_dir):
+            for file in files:
+                if file.endswith(('.exe', '.py')) and 'gui' in file.lower():
+                    src_path = os.path.join(root, file)
+                    dst_path = os.path.join(current_dir, file)
+                    
+                    # 备份原文件
+                    if os.path.exists(dst_path):
+                        backup_path = dst_path + '.backup'
+                        shutil.copy2(dst_path, backup_path)
+                    
+                    # 复制新文件
+                    shutil.copy2(src_path, dst_path)
+                    
+                    # 如果是可执行文件，给予执行权限
+                    if file.endswith('.exe') and os.name != 'nt':
+                        os.chmod(dst_path, 0o755)
+    
+    def check_and_update_async(self, force_check=False):
+        """异步检查并更新"""
+        def update_thread():
+            # 检查更新
+            update_info = self.check_for_updates()
+            
+            if update_info:
+                # 显示更新对话框
+                if self.show_update_dialog(update_info):
+                    # 创建进度窗口
+                    self._show_progress_window(update_info)
+            elif force_check:
+                # 如果是手动检查，显示"已是最新版本"
+                messagebox.showinfo("检查更新", "当前已是最新版本！")
+        
+        threading.Thread(target=update_thread, daemon=True).start()
+    
+    def _show_progress_window(self, update_info: Dict):
+        """显示更新进度窗口"""
+        root = tk.Tk()
+        root.title("正在更新...")
+        root.geometry("400x200")
+        root.resizable(False, False)
         
         # 居中显示
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() // 2) - (500 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (400 // 2)
-        self.dialog.geometry(f"500x400+{x}+{y}")
+        root.eval('tk::PlaceWindow . center')
         
-        self.create_widgets()
+        # 进度标签
+        progress_label = tk.Label(root, text="准备下载更新...", font=('Microsoft YaHei', 10))
+        progress_label.pack(pady=20)
         
-    def create_widgets(self):
-        # 标题
-        title_frame = tk.Frame(self.dialog, bg='#f0f0f0', height=60)
-        title_frame.pack(fill='x')
-        title_frame.pack_propagate(False)
+        # 进度条
+        progress_bar = ttk.Progressbar(root, mode='determinate', length=300)
+        progress_bar.pack(pady=10)
         
-        title_label = tk.Label(title_frame, text="🚀 发现新版本", 
-                              font=('Microsoft YaHei', 16, 'bold'),
-                              bg='#f0f0f0', fg='#2c3e50')
-        title_label.pack(expand=True)
+        # 状态标签
+        status_label = tk.Label(root, text="", font=('Microsoft YaHei', 9), fg='gray')
+        status_label.pack(pady=5)
         
-        # 版本信息
-        info_frame = tk.Frame(self.dialog, padx=20, pady=20)
-        info_frame.pack(fill='both', expand=True)
+        def progress_callback(progress, message):
+            if progress >= 0:
+                progress_bar['value'] = progress
+            progress_label.config(text=message)
+            root.update()
+            
+            if progress == 100:
+                # 更新完成，重启应用
+                root.after(2000, lambda: self._restart_application(root))
         
-        # 版本对比
-        version_frame = tk.Frame(info_frame)
-        version_frame.pack(fill='x', pady=(0, 15))
+        # 在新线程中执行更新
+        def update_thread():
+            success = self.download_and_install_update(update_info, progress_callback)
+            if not success:
+                root.after(0, lambda: messagebox.showerror("更新失败", "更新过程中出现错误"))
+                root.after(0, root.destroy)
         
-        tk.Label(version_frame, text="当前版本:", font=('Microsoft YaHei', 10)).pack(anchor='w')
-        tk.Label(version_frame, text=AutoUpdater().current_version, 
-                font=('Consolas', 10), fg='#666').pack(anchor='w', padx=(20, 0))
-        
-        tk.Label(version_frame, text="最新版本:", font=('Microsoft YaHei', 10)).pack(anchor='w', pady=(10, 0))
-        tk.Label(version_frame, text=self.update_info['latest_version'], 
-                font=('Consolas', 10), fg='#e74c3c').pack(anchor='w', padx=(20, 0))
-        
-        # 更新说明
-        tk.Label(info_frame, text="更新说明:", font=('Microsoft YaHei', 10)).pack(anchor='w', pady=(15, 5))
-        
-        changelog_text = tk.Text(info_frame, height=8, wrap='word', 
-                               font=('Microsoft YaHei', 9), bg='#f8f9fa')
-        changelog_text.pack(fill='both', expand=True, pady=(0, 15))
-        
-        # 构建更新日志内容
-        update_time = self.update_info.get('update_time', '未知')
-        if update_time != '未知' and 'T' in update_time:
-            update_time = update_time.split('T')[0]  # 只显示日期部分
-
-        changelog_content = f"""版本: {self.update_info['latest_version']}
-更新时间: {update_time}
-
-最近提交记录:
-{self.update_info.get('changelog', '• 基于最新代码自动构建')}
-
-Release说明:
-{self.update_info.get('release_notes', '详细更新内容请查看GitHub Release页面')}
-
-建议立即更新以获得最佳体验！"""
-        
-        changelog_text.insert('1.0', changelog_content)
-        changelog_text.config(state='disabled')
-        
-        # 按钮
-        button_frame = tk.Frame(info_frame)
-        button_frame.pack(fill='x')
-        
-        update_btn = tk.Button(button_frame, text="立即更新", 
-                              command=self.start_update,
-                              bg='#3498db', fg='white', 
-                              font=('Microsoft YaHei', 10),
-                              padx=20, pady=5)
-        update_btn.pack(side='right', padx=(10, 0))
-        
-        later_btn = tk.Button(button_frame, text="稍后更新", 
-                             command=self.close_dialog,
-                             font=('Microsoft YaHei', 10),
-                             padx=20, pady=5)
-        later_btn.pack(side='right')
-        
-    def start_update(self):
-        self.result = True
-        self.dialog.destroy()
-        
-    def close_dialog(self):
-        self.result = False
-        self.dialog.destroy()
-
-def check_and_update(parent_window=None, repo_url=""):
-    """检查并处理更新"""
-    updater = AutoUpdater(repo_url=repo_url)
+        threading.Thread(target=update_thread, daemon=True).start()
+        root.mainloop()
     
+    def _restart_application(self, window):
+        """重启应用程序"""
+        window.destroy()
+        
+        # 显示重启提示
+        restart_root = tk.Tk()
+        restart_root.withdraw()
+        
+        if messagebox.askyesno("更新完成", "更新已完成！是否立即重启应用程序？"):
+            # 重启应用
+            if getattr(sys, 'frozen', False):
+                # 如果是打包的可执行文件
+                os.execl(sys.executable, sys.executable)
+            else:
+                # 如果是Python脚本
+                os.execl(sys.executable, sys.executable, *sys.argv)
+        
+        restart_root.destroy()
+
+
+def get_current_version():
+    """获取当前版本号"""
     try:
-        update_info = updater.check_for_updates()
-        
-        if update_info.get('has_update'):
-            # 显示更新对话框
-            if parent_window:
-                dialog = UpdateDialog(parent_window, update_info)
-                parent_window.wait_window(dialog.dialog)
-                
-                if dialog.result:
-                    # 用户选择更新
-                    progress_window = create_progress_window(parent_window)
-                    
-                    def update_progress(progress):
-                        progress_window['progress'].set(progress)
-                        progress_window['window'].update()
-                    
-                    try:
-                        # 下载更新
-                        zip_file = updater.download_update(
-                            update_info['download_url'], 
-                            update_progress
-                        )
-                        
-                        progress_window['window'].destroy()
-                        
-                        # 安装更新
-                        if updater.install_update(zip_file):
-                            messagebox.showinfo("更新完成", "程序将重启以完成更新")
-                            sys.exit(0)
-                        
-                    except Exception as e:
-                        progress_window['window'].destroy()
-                        messagebox.showerror("更新失败", f"更新过程中出现错误:\n{str(e)}")
-            else:
-                print(f"发现新版本: {update_info['latest_version']}")
-                return update_info
-        else:
-            if parent_window:
-                messagebox.showinfo("检查更新", "当前已是最新版本")
-            else:
-                print("当前已是最新版本")
-                
-    except Exception as e:
-        if parent_window:
-            messagebox.showerror("检查更新失败", f"无法检查更新:\n{str(e)}")
-        else:
-            print(f"检查更新失败: {str(e)}")
+        # 尝试从version.py获取版本信息
+        import version
+        return version.VERSION
+    except ImportError:
+        # 如果没有version.py，返回默认版本
+        return "1.0.0"
 
-def create_progress_window(parent):
-    """创建进度窗口"""
-    window = tk.Toplevel(parent)
-    window.title("正在更新")
-    window.geometry("400x150")
-    window.resizable(False, False)
-    window.transient(parent)
-    window.grab_set()
-    
-    # 居中
-    window.update_idletasks()
-    x = (window.winfo_screenwidth() // 2) - (400 // 2)
-    y = (window.winfo_screenheight() // 2) - (150 // 2)
-    window.geometry(f"400x150+{x}+{y}")
-    
-    tk.Label(window, text="正在下载更新...", 
-            font=('Microsoft YaHei', 12)).pack(pady=20)
-    
-    progress_var = tk.DoubleVar()
-    progress_bar = ttk.Progressbar(window, variable=progress_var, 
-                                  maximum=100, length=300)
-    progress_bar.pack(pady=10)
-    
-    return {'window': window, 'progress': progress_var}
 
-if __name__ == '__main__':
-    # 测试更新功能
-    root = tk.Tk()
-    root.withdraw()  # 隐藏主窗口
+if __name__ == "__main__":
+    # 测试更新器
+    current_ver = get_current_version()
+    updater = AutoUpdater(current_ver)
     
-    check_and_update(repo_url="POf-L/Fanqie-novel-Downloader")
+    print(f"当前版本: {current_ver}")
+    print("检查更新...")
     
-    root.destroy()
+    update_info = updater.check_for_updates()
+    if update_info:
+        print(f"发现新版本: {update_info['version']}")
+        print(f"下载链接: {update_info['download_url']}")
+    else:
+        print("当前已是最新版本")
