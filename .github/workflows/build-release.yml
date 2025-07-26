@@ -136,26 +136,21 @@ jobs:
           # 创建基本的pyinstaller命令
           if [ -f "icon.ico" ]; then
             pyinstaller --onefile --windowed \
-              --name="$app_name" \
+              --name="TomatoNovelDownloader" \
               --add-data="version.py:." \
               --icon="icon.ico" \
               gui.py
           else
             pyinstaller --onefile --windowed \
-              --name="$app_name" \
+              --name="TomatoNovelDownloader" \
               --add-data="version.py:." \
               gui.py
           fi
         fi
 
-        # 复制必要文件到dist目录
-        if [ -d "dist" ]; then
-          cp README.md dist/ 2>/dev/null || true
-          cp requirements.txt dist/ 2>/dev/null || true
-          cp version.py dist/ 2>/dev/null || true
-          cp tomato_novel_api.py dist/ 2>/dev/null || true
-          cp updater.py dist/ 2>/dev/null || true
-        fi
+        # 检查编译结果
+        echo "编译完成，检查输出："
+        ls -la dist/
       shell: bash
       
     - name: 创建发布包
@@ -163,16 +158,65 @@ jobs:
         version="${{ steps.version.outputs.VERSION }}"
         artifact_name="${{ matrix.artifact_name }}"
 
-        # 创建发布目录
-        mkdir -p release
+        # 创建发布目录结构
+        mkdir -p release/TomatoNovelDownloader-$version-$artifact_name
 
+        # 根据平台复制可执行文件
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          # Windows平台
+          if [ -f "dist/TomatoNovelDownloader.exe" ]; then
+            cp dist/TomatoNovelDownloader.exe "release/TomatoNovelDownloader-$version-$artifact_name/"
+            echo "✅ Windows可执行文件已复制"
+          else
+            echo "❌ 未找到Windows可执行文件"
+            ls -la dist/
+            exit 1
+          fi
+        else
+          # Linux/macOS平台
+          if [ -f "dist/TomatoNovelDownloader" ]; then
+            cp dist/TomatoNovelDownloader "release/TomatoNovelDownloader-$version-$artifact_name/"
+            chmod +x "release/TomatoNovelDownloader-$version-$artifact_name/TomatoNovelDownloader"
+            echo "✅ Unix可执行文件已复制"
+          else
+            echo "❌ 未找到Unix可执行文件"
+            ls -la dist/
+            exit 1
+          fi
+        fi
+
+        # 复制必要的文档文件（不是源代码）
+        cp README.md "release/TomatoNovelDownloader-$version-$artifact_name/" 2>/dev/null || true
+        
+        # 创建简单的使用说明
+        echo "番茄小说下载器 使用说明" > "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "========================" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "1. 直接双击运行可执行文件即可启动程序" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "2. 在程序界面中输入小说链接或搜索关键词" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "3. 选择下载格式和保存路径" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "4. 点击开始下载" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "注意事项：" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "- 请确保网络连接正常" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "- 下载的小说仅供个人学习使用" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "- 如遇到问题，请查看README.md文件" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "版本信息：" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "- 版本号：$version" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "- 编译时间：$timestamp" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+        echo "- 平台：$artifact_name" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
+
+        # 创建压缩包
+        cd release
         if [ "${{ runner.os }}" = "Windows" ]; then
           # Windows 使用 PowerShell 自带的 Compress-Archive
-          powershell -Command "Compress-Archive -Path 'dist/*' -DestinationPath 'release/TomatoNovelDownloader-$version-$artifact_name.zip'"
+          powershell -Command "Compress-Archive -Path 'TomatoNovelDownloader-$version-$artifact_name' -DestinationPath 'TomatoNovelDownloader-$version-$artifact_name.zip'"
         else
           # Linux/macOS 使用 zip 命令
-          zip -r "release/TomatoNovelDownloader-$version-$artifact_name.zip" dist/*
+          zip -r "TomatoNovelDownloader-$version-$artifact_name.zip" "TomatoNovelDownloader-$version-$artifact_name"
         fi
+        cd ..
 
         # 创建更新信息文件
         timestamp="${{ steps.version.outputs.TIMESTAMP }}"
@@ -190,8 +234,14 @@ jobs:
         echo "  \"branch\": \"$branch_name\"" >> "release/update_info_$artifact_name.json"
         echo '}' >> "release/update_info_$artifact_name.json"
 
-        echo "Release package created:"
+        echo "发布包创建完成："
         ls -la release/
+        echo "压缩包内容："
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          powershell -Command "Expand-Archive -Path 'release/TomatoNovelDownloader-$version-$artifact_name.zip' -DestinationPath 'temp-check' -Force; Get-ChildItem -Recurse temp-check"
+        else
+          unzip -l "release/TomatoNovelDownloader-$version-$artifact_name.zip"
+        fi
       shell: bash
       
     - name: 上传构建产物
