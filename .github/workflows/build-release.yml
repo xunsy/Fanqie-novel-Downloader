@@ -185,28 +185,6 @@ jobs:
           fi
         fi
 
-        # 复制必要的文档文件（不是源代码）
-        cp README.md "release/TomatoNovelDownloader-$version-$artifact_name/" 2>/dev/null || true
-        
-        # 创建简单的使用说明
-        echo "番茄小说下载器 使用说明" > "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "========================" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "1. 直接双击运行可执行文件即可启动程序" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "2. 在程序界面中输入小说链接或搜索关键词" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "3. 选择下载格式和保存路径" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "4. 点击开始下载" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "注意事项：" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "- 请确保网络连接正常" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "- 下载的小说仅供个人学习使用" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "- 如遇到问题，请查看README.md文件" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "版本信息：" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "- 版本号：$version" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "- 编译时间：$timestamp" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-        echo "- 平台：$artifact_name" >> "release/TomatoNovelDownloader-$version-$artifact_name/使用说明.txt"
-
         # 创建压缩包
         cd release
         if [ "${{ runner.os }}" = "Windows" ]; then
