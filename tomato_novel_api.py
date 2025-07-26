@@ -1,157 +1,257 @@
 #!/usr/bin/env python3
-""#line:2
-import requests #line:3
-import json #line:4
-import sys #line:5
-import urllib .parse #line:6
-import time #line:7
-from typing import Optional #line:8
-class TomatoNovelAPI :#line:9
-    def __init__ (O0OO000OO0000O0OO ):#line:10
-        O0OO000OO0000O0OO .base_url ="http://read.tutuxka.top"#line:11
-        O0OO000OO0000O0OO .session =requests .Session ()#line:12
-        O0OO000OO0000O0OO .session .headers .update ({'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36','Referer':O0OO000OO0000O0OO .base_url ,'DNT':'1'})#line:13
-        O0OO000OO0000O0OO .timeout =30 #line:14
-        O0OO000OO0000O0OO .max_retries =3 #line:15
-        O0OO000OO0000O0OO .retry_delay =2 #line:16
-    def _make_request_with_retry (O0O0OOOO00OO0OOOO ,O0O00O0OOO000OO0O :str ,O0O000O0O0O0OO0OO :Optional [dict ]=None )->Optional [dict ]:#line:17
-        ""#line:18
-        for O0O00O000O0OOO0OO in range (O0O0OOOO00OO0OOOO .max_retries ):#line:19
-            try :#line:20
-                print (f"尝试请求 (第{O0O00O000O0OOO0OO + 1}次): {O0O00O0OOO000OO0O}")#line:21
-                OOOO0O0O0OOO00O0O =O0O0OOOO00OO0OOOO .session .get (O0O00O0OOO000OO0O ,params =O0O000O0O0O0OO0OO ,timeout =O0O0OOOO00OO0OOOO .timeout )#line:22
-                OOOO0O0O0OOO00O0O .raise_for_status ()#line:23
-                return OOOO0O0O0OOO00O0O .json ()#line:24
-            except requests .exceptions .Timeout :#line:25
-                print (f"请求超时 (第{O0O00O000O0OOO0OO + 1}次)")#line:26
-                if O0O00O000O0OOO0OO <O0O0OOOO00OO0OOOO .max_retries -1 :#line:27
-                    print (f"等待 {O0O0OOOO00OO0OOOO.retry_delay} 秒后重试...")#line:28
-                    time .sleep (O0O0OOOO00OO0OOOO .retry_delay )#line:29
-                else :#line:30
-                    print (f"请求超时，已达到最大重试次数 ({O0O0OOOO00OO0OOOO.max_retries})")#line:31
-            except requests .exceptions .HTTPError as O00OO0OO0OO0OO00O :#line:32
-                if O00OO0OO0OO0OO00O .response .status_code ==504 :#line:33
-                    print (f"服务器网关超时 (504) - 第{O0O00O000O0OOO0OO + 1}次")#line:34
-                    if O0O00O000O0OOO0OO <O0O0OOOO00OO0OOOO .max_retries -1 :#line:35
-                        print (f"等待 {O0O0OOOO00OO0OOOO.retry_delay * 2} 秒后重试...")#line:36
-                        time .sleep (O0O0OOOO00OO0OOOO .retry_delay *2 )#line:37
-                    else :#line:38
-                        print (f"服务器持续超时，建议稍后再试")#line:39
-                else :#line:40
-                    print (f"HTTP错误: {O00OO0OO0OO0OO00O}")#line:41
-                    break #line:42
-            except requests .RequestException as O00OO0OO0OO0OO00O :#line:43
-                print (f"网络请求失败: {O00OO0OO0OO0OO00O}")#line:44
-                if O0O00O000O0OOO0OO <O0O0OOOO00OO0OOOO .max_retries -1 :#line:45
-                    print (f"等待 {O0O0OOOO00OO0OOOO.retry_delay} 秒后重试...")#line:46
-                    time .sleep (O0O0OOOO00OO0OOOO .retry_delay )#line:47
-                else :#line:48
-                    print (f"网络连接失败，已达到最大重试次数")#line:49
-            except json .JSONDecodeError as O00OO0OO0OO0OO00O :#line:50
-                print (f"解析响应JSON失败: {O00OO0OO0OO0OO00O}")#line:51
-                break #line:52
-        return None #line:53
-    def search_novels (OO0OO0OOO0O0O0OOO ,O0O0O00OOO0OO000O ,OO0OO000000O0O000 =0 ,O00000OOOO00OO00O =1 ):#line:54
-        ""#line:55
-        O0O0OOOO0O000OO00 =urllib .parse .quote (O0O0O00OOO0OO000O )#line:56
-        O0OO0O00O0O000OO0 =f"{OO0OO0OOO0O0O0OOO.base_url}/search.php?key={O0O0OOOO0O000OO00}&offset={OO0OO000000O0O000}&tab_type={O00000OOOO00OO00O}"#line:57
-        return OO0OO0OOO0O0O0OOO ._make_request_with_retry (O0OO0O00O0O000OO0 )#line:58
-    def get_novel_info (OO0000OO0O0000O00 ,OO00O0OO000OO00O0 ):#line:59
-        ""#line:60
-        O00O0O000O0O0OO00 =f"{OO0000OO0O0000O00.base_url}/content.php?book_id={OO00O0OO000OO00O0}"#line:61
-        return OO0000OO0O0000O00 ._make_request_with_retry (O00O0O000O0O0OO00 )#line:62
-    def get_chapter_content (OOOOO0OOO0OO000OO ,O00OO000OOO0O0OOO ):#line:63
-        ""#line:64
-        O00OOO00OO00000OO =f"{OOOOO0OOO0OO000OO.base_url}/content.php?item_ids={O00OO000OOO0O0OOO}&api_type=full"#line:65
-        return OOOOO0OOO0OO000OO ._make_request_with_retry (O00OOO00OO00000OO )#line:66
-    def get_book_details (O0O0OO0O000OOO000 ,O0000OO0OOOOO0O0O ):#line:67
-        ""#line:68
-        O0O000O0O0O00OOO0 =f"{O0O0OO0O000OOO000.base_url}/book.php?bookId={O0000OO0OOOOO0O0O}"#line:69
-        return O0O0OO0O000OOO000 ._make_request_with_retry (O0O000O0O0O00OOO0 )#line:70
-    def download_full_novel (O0OO0OO000O0O0O0O ,O00000O0OOO000OO0 ,O0OOO0OO00O0OO000 ):#line:71
-        ""#line:72
-        if isinstance (O0OOO0OO00O0OO000 ,list ):#line:73
-            O00OO0OOOOO00OO0O =','.join (O0OOO0OO00O0OO000 )#line:74
-        else :#line:75
-            O00OO0OOOOO00OO0O =O0OOO0OO00O0OO000 #line:76
-        OO0OOOO0000000OO0 =f"{O0OO0OO000O0O0O0O.base_url}/full.php?book_id={O00000O0OOO000OO0}&item_ids={O00OO0OOOOO00OO0O}"#line:77
-        OOO0OOO0OO00000OO =O0OO0OO000O0O0O0O ._make_request_with_retry (OO0OOOO0000000OO0 )#line:78
-        if OOO0OOO0OO00000OO :#line:79
-            if not isinstance (OOO0OOO0OO00000OO ,list ):#line:80
-                print (f"下载整本小说失败，服务器返回了非列表类型: {type(OOO0OOO0OO00000OO)}")#line:81
-                return None #line:82
-            return {"success":True ,"data":{"items":OOO0OOO0OO00000OO }}#line:83
-        return None #line:84
-def main ():#line:85
-    ""#line:86
-    OOOO0OOOO0OOOOO00 =TomatoNovelAPI ()#line:87
-    if len (sys .argv )<2 :#line:88
-        print ("使用方法:")#line:89
-        print ("  搜索小说: python tomato_novel_api.py search <关键词>")#line:90
-        print ("  获取小说信息: python tomato_novel_api.py novel_info <书籍ID>")#line:91
-        print ("  获取书籍详细信息: python tomato_novel_api.py book_details <书籍ID>")#line:92
-        print ("  获取章节内容: python tomato_novel_api.py chapter_content <章节ID>")#line:93
-        print ("  下载整本小说: python tomato_novel_api.py download_full <书籍ID> <章节ID列表>")#line:94
-        return #line:95
-    O00OOOO00O0O0O000 =sys .argv [1 ]#line:96
-    if O00OOOO00O0O0O000 =="search":#line:97
-        if len (sys .argv )<3 :#line:98
-            print ("请提供搜索关键词")#line:99
-            return #line:100
-        O0O0O0OO0OOO00O0O =sys .argv [2 ]#line:101
-        print (f"正在搜索: {O0O0O0OO0OOO00O0O}")#line:102
-        OOOO0OOO00OOO0OOO =OOOO0OOOO0OOOOO00 .search_novels (O0O0O0OO0OOO00O0O )#line:103
-        if OOOO0OOO00OOO0OOO :#line:104
-            print (json .dumps (OOOO0OOO00OOO0OOO ,ensure_ascii =False ,indent =2 ))#line:105
-        else :#line:106
-            print ("搜索失败")#line:107
-    elif O00OOOO00O0O0O000 =="novel_info":#line:108
-        if len (sys .argv )<3 :#line:109
-            print ("请提供书籍ID")#line:110
-            return #line:111
-        O00O0O0O00O0OOOO0 =sys .argv [2 ]#line:112
-        print (f"正在获取书籍信息: {O00O0O0O00O0OOOO0}")#line:113
-        OOOO0OOO00OOO0OOO =OOOO0OOOO0OOOOO00 .get_novel_info (O00O0O0O00O0OOOO0 )#line:114
-        if OOOO0OOO00OOO0OOO :#line:115
-            print (json .dumps (OOOO0OOO00OOO0OOO ,ensure_ascii =False ,indent =2 ))#line:116
-        else :#line:117
-            print ("获取书籍信息失败")#line:118
-    elif O00OOOO00O0O0O000 =="book_details":#line:119
-        if len (sys .argv )<3 :#line:120
-            print ("请提供书籍ID")#line:121
-            return #line:122
-        OO0O00000O000OOO0 =sys .argv [2 ]#line:123
-        print (f"正在获取书籍详细信息: {OO0O00000O000OOO0}")#line:124
-        OOOO0OOO00OOO0OOO =OOOO0OOOO0OOOOO00 .get_book_details (OO0O00000O000OOO0 )#line:125
-        if OOOO0OOO00OOO0OOO :#line:126
-            print (json .dumps (OOOO0OOO00OOO0OOO ,ensure_ascii =False ,indent =2 ))#line:127
-        else :#line:128
-            print ("获取书籍详细信息失败")#line:129
-    elif O00OOOO00O0O0O000 =="chapter_content":#line:130
-        if len (sys .argv )<3 :#line:131
-            print ("请提供章节ID")#line:132
-            return #line:133
-        O00O0OO00O0O0O0O0 =sys .argv [2 ]#line:134
-        print (f"正在获取章节内容: {O00O0OO00O0O0O0O0}")#line:135
-        OOOO0OOO00OOO0OOO =OOOO0OOOO0OOOOO00 .get_chapter_content (O00O0OO00O0O0O0O0 )#line:136
-        if OOOO0OOO00OOO0OOO :#line:137
-            print (json .dumps (OOOO0OOO00OOO0OOO ,ensure_ascii =False ,indent =2 ))#line:138
-        else :#line:139
-            print ("获取章节内容失败")#line:140
-    elif O00OOOO00O0O0O000 =="download_full":#line:141
-        if len (sys .argv )<4 :#line:142
-            print ("请提供书籍ID和章节ID列表")#line:143
-            return #line:144
-        O00O0O0O00O0OOOO0 =sys .argv [2 ]#line:145
-        O00O0OO00O0O0O0O0 =sys .argv [3 ]#line:146
-        print (f"正在下载整本小说: {O00O0O0O00O0OOOO0}")#line:147
-        OOOO0OOO00OOO0OOO =OOOO0OOOO0OOOOO00 .download_full_novel (O00O0O0O00O0OOOO0 ,O00O0OO00O0O0O0O0 )#line:148
-        if OOOO0OOO00OOO0OOO :#line:149
-            print (json .dumps (OOOO0OOO00OOO0OOO ,ensure_ascii =False ,indent =2 ))#line:150
-        else :#line:151
-            print ("下载整本小说失败")#line:152
-    else :#line:153
-        print (f"未知命令: {O00OOOO00O0O0O000}")#line:154
-        print ("支持的命令: search, novel_info, book_details, chapter_content, download_full")#line:155
-if __name__ =="__main__":#line:156
-    main ()
+# -*- coding: utf-8 -*-
+
+"""
+番茄小说API调用脚本
+可以独立运行或作为模块调用
+"""
+
+import requests
+import json
+import sys
+import urllib.parse
+import time
+from typing import Optional
+
+
+class TomatoNovelAPI:
+    def __init__(self):
+        self.base_url = "http://read.tutuxka.top"
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': self.base_url,
+            'DNT': '1'
+        })
+        # 设置默认超时时间
+        self.timeout = 30
+        # 重试配置
+        self.max_retries = 3
+        self.retry_delay = 2
+
+    def _make_request_with_retry(self, url: str, params: Optional[dict] = None) -> Optional[dict]:
+        """
+        带重试机制的请求方法
+        
+        Args:
+            url (str): 请求URL
+            params (dict, optional): 请求参数
+            
+        Returns:
+            dict: 响应结果
+        """
+        for attempt in range(self.max_retries):
+            try:
+                print(f"尝试请求 (第{attempt + 1}次): {url}")
+                response = self.session.get(url, params=params, timeout=self.timeout)
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.Timeout:
+                print(f"请求超时 (第{attempt + 1}次)")
+                if attempt < self.max_retries - 1:
+                    print(f"等待 {self.retry_delay} 秒后重试...")
+                    time.sleep(self.retry_delay)
+                else:
+                    print(f"请求超时，已达到最大重试次数 ({self.max_retries})")
+                    
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 504:
+                    print(f"服务器网关超时 (504) - 第{attempt + 1}次")
+                    if attempt < self.max_retries - 1:
+                        print(f"等待 {self.retry_delay * 2} 秒后重试...")
+                        time.sleep(self.retry_delay * 2)  # 504错误等待更长时间
+                    else:
+                        print(f"服务器持续超时，建议稍后再试")
+                else:
+                    print(f"HTTP错误: {e}")
+                    break  # 其他HTTP错误不重试
+                    
+            except requests.RequestException as e:
+                print(f"网络请求失败: {e}")
+                if attempt < self.max_retries - 1:
+                    print(f"等待 {self.retry_delay} 秒后重试...")
+                    time.sleep(self.retry_delay)
+                else:
+                    print(f"网络连接失败，已达到最大重试次数")
+                    
+            except json.JSONDecodeError as e:
+                print(f"解析响应JSON失败: {e}")
+                break  # JSON解析错误不重试
+                
+        return None
+    
+    def search_novels(self, keyword, offset=0, tab_type=1):
+        """
+        搜索小说
+        
+        Args:
+            keyword (str): 搜索关键词
+            offset (int): 偏移量，默认为0
+            tab_type (int): 标签类型，默认为1
+            
+        Returns:
+            dict: 搜索结果
+        """
+        encoded_keyword = urllib.parse.quote(keyword)
+        url = f"{self.base_url}/search.php?key={encoded_keyword}&offset={offset}&tab_type={tab_type}"
+        return self._make_request_with_retry(url)
+
+    def get_novel_info(self, book_id):
+        """
+        获取小说信息
+        
+        Args:
+            book_id (str): 小说ID
+            
+        Returns:
+            dict: 小说信息
+        """
+        url = f"{self.base_url}/content.php?book_id={book_id}"
+        return self._make_request_with_retry(url)
+
+    def get_chapter_content(self, item_ids):
+        """
+        获取章节内容
+        
+        Args:
+            item_ids (str): 章节ID
+            
+        Returns:
+            dict: 章节内容
+        """
+        url = f"{self.base_url}/content.php?item_ids={item_ids}&api_type=full"
+        return self._make_request_with_retry(url)
+
+    def get_book_details(self, bookId):
+        """
+        获取书籍详细信息
+        
+        Args:
+            bookId (str): 书籍ID
+            
+        Returns:
+            dict: 书籍详细信息
+        """
+        url = f"{self.base_url}/book.php?bookId={bookId}"
+        return self._make_request_with_retry(url)
+
+    def download_full_novel(self, book_id, item_ids):
+        """
+        一次性下载整本小说
+        
+        Args:
+            book_id (str): 小说ID
+            item_ids (list or str): 章节ID列表或逗号分隔的章节ID字符串
+            
+        Returns:
+            dict: 小说完整内容
+        """
+        # 如果item_ids是列表，则转换为逗号分隔的字符串
+        if isinstance(item_ids, list):
+            item_ids_str = ','.join(item_ids)
+        else:
+            item_ids_str = item_ids
+            
+        url = f"{self.base_url}/full.php?book_id={book_id}&item_ids={item_ids_str}"
+        
+        result = self._make_request_with_retry(url)
+        if result:
+            # 检查返回结果是否为列表类型（full.php接口返回的是列表）
+            if not isinstance(result, list):
+                print(f"下载整本小说失败，服务器返回了非列表类型: {type(result)}")
+                return None
+            # full.php接口直接返回章节内容列表，不需要检查success字段
+            return {"success": True, "data": {"items": result}}
+        return None
+
+
+def main():
+    """主函数，用于独立运行脚本"""
+    api = TomatoNovelAPI()
+    
+    if len(sys.argv) < 2:
+        print("使用方法:")
+        print("  搜索小说: python tomato_novel_api.py search <关键词>")
+        print("  获取小说信息: python tomato_novel_api.py novel_info <书籍ID>")
+        print("  获取书籍详细信息: python tomato_novel_api.py book_details <书籍ID>")
+        print("  获取章节内容: python tomato_novel_api.py chapter_content <章节ID>")
+        print("  下载整本小说: python tomato_novel_api.py download_full <书籍ID> <章节ID列表>")
+        return
+    
+    command = sys.argv[1]
+    
+    if command == "search":
+        if len(sys.argv) < 3:
+            print("请提供搜索关键词")
+            return
+        
+        keyword = sys.argv[2]
+        print(f"正在搜索: {keyword}")
+        result = api.search_novels(keyword)
+        if result:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("搜索失败")
+            
+    elif command == "novel_info":
+        if len(sys.argv) < 3:
+            print("请提供书籍ID")
+            return
+            
+        book_id = sys.argv[2]
+        print(f"正在获取书籍信息: {book_id}")
+        result = api.get_novel_info(book_id)
+        if result:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("获取书籍信息失败")
+            
+    elif command == "book_details":
+        if len(sys.argv) < 3:
+            print("请提供书籍ID")
+            return
+            
+        bookId = sys.argv[2]
+        print(f"正在获取书籍详细信息: {bookId}")
+        result = api.get_book_details(bookId)
+        if result:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("获取书籍详细信息失败")
+            
+    elif command == "chapter_content":
+        if len(sys.argv) < 3:
+            print("请提供章节ID")
+            return
+            
+        item_ids = sys.argv[2]
+        print(f"正在获取章节内容: {item_ids}")
+        result = api.get_chapter_content(item_ids)
+        if result:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("获取章节内容失败")
+            
+    elif command == "download_full":
+        if len(sys.argv) < 4:
+            print("请提供书籍ID和章节ID列表")
+            return
+            
+        book_id = sys.argv[2]
+        item_ids = sys.argv[3]
+        print(f"正在下载整本小说: {book_id}")
+        result = api.download_full_novel(book_id, item_ids)
+        if result:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("下载整本小说失败")
+            
+    else:
+        print(f"未知命令: {command}")
+        print("支持的命令: search, novel_info, book_details, chapter_content, download_full")
+
+
+# 当脚本被直接运行时执行主函数
+if __name__ == "__main__":
+    main()

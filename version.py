@@ -11,6 +11,9 @@ DEFAULT_BUILD_TIME = "2024.07.25.1900"
 DEFAULT_COMMIT_HASH = "local-dev"
 DEFAULT_BRANCH = "main"
 
+# 标识当前是否为编译版本（GitHub Actions会设置此标志）
+IS_COMPILED_VERSION = os.getenv('IS_COMPILED_VERSION', 'false').lower() == 'true'
+
 def get_git_info():
     """获取Git信息"""
     try:
@@ -46,8 +49,19 @@ def get_version_info():
         'version': VERSION,
         'build_time': BUILD_TIME,
         'commit_hash': COMMIT_HASH,
-        'branch': BRANCH
+        'branch': BRANCH,
+        'is_compiled': IS_COMPILED_VERSION
     }
 
 def get_version_string():
     return f"v{VERSION}"
+
+def is_development_version():
+    """判断是否为开发版本"""
+    return not IS_COMPILED_VERSION and get_git_info() is not None
+
+def get_base_version():
+    """获取基础版本号（不包含commit hash）用于版本比较"""
+    if '-' in VERSION:
+        return VERSION.split('-')[0]
+    return VERSION

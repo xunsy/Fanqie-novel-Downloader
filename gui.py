@@ -481,10 +481,26 @@ class ModernNovelDownloaderGUI:
         version_frame = tk.Frame(update_card, bg=self.colors['surface'])
         version_frame.pack(fill=tk.X, pady=(0, 10))
         
-        tk.Label(version_frame, text=f"当前版本: {self.current_version}", 
+        # 获取详细版本信息
+        try:
+            import version
+            version_info = version.get_version_info()
+            is_dev = version.is_development_version()
+            
+            if is_dev:
+                version_text = f"当前版本: {self.current_version} (开发版本)"
+                version_color = self.colors['warning']
+            else:
+                version_text = f"当前版本: {self.current_version} (编译版本)"
+                version_color = self.colors['success']
+        except:
+            version_text = f"当前版本: {self.current_version}"
+            version_color = self.colors['text_primary']
+        
+        tk.Label(version_frame, text=version_text, 
                 font=self.fonts['body'], 
                 bg=self.colors['surface'], 
-                fg=self.colors['text_primary']).pack(side=tk.LEFT)
+                fg=version_color).pack(side=tk.LEFT)
         
         # 更新按钮
         update_buttons_frame = tk.Frame(update_card, bg=self.colors['surface'])

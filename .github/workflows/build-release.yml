@@ -62,21 +62,35 @@ jobs:
         # 版本信息文件 - 由GitHub Actions自动生成
         # 构建时间: $timestamp
 
+        import os
+
         VERSION="$version"
         BUILD_TIME="$timestamp"
         COMMIT_HASH="${{ github.sha }}"
         BRANCH="${{ github.ref_name }}"
+        IS_COMPILED_VERSION = True
 
         def get_version_info():
             return {
                 'version': VERSION,
                 'build_time': BUILD_TIME,
                 'commit_hash': COMMIT_HASH,
-                'branch': BRANCH
+                'branch': BRANCH,
+                'is_compiled': IS_COMPILED_VERSION
             }
 
         def get_version_string():
             return f"v{VERSION}"
+            
+        def is_development_version():
+            """判断是否为开发版本"""
+            return False  # 编译版本总是返回False
+            
+        def get_base_version():
+            """获取基础版本号（不包含commit hash）用于版本比较"""
+            if '-' in VERSION:
+                return VERSION.split('-')[0]
+            return VERSION
         EOF
 
         # 删除8个前导空格，避免 Python 缩进错误

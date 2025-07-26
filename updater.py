@@ -31,6 +31,18 @@ class AutoUpdater:
         # 检测当前平台
         self.platform = self._detect_platform()
         
+        # 获取版本信息
+        try:
+            import version
+            self.version_info = version.get_version_info()
+            self.is_development = version.is_development_version()
+        except ImportError:
+            self.version_info = {
+                'version': current_version,
+                'is_compiled': False
+            }
+            self.is_development = False
+        
     def _detect_platform(self) -> str:
         """检测当前运行平台"""
         system = platform.system().lower()
@@ -57,8 +69,17 @@ class AutoUpdater:
             release_info = response.json()
             latest_version = release_info['tag_name'].lstrip('v')
             
-            # 比较版本号
-            if self._is_newer_version(latest_version, self.current_version):
+            print(f"[调试] 检查更新:")
+            print(f"[调试] 本地版本: {self.current_version}")
+            print(f"[调试] GitHub版本: {latest_version}")
+            print(f"[调试] 是否开发版本: {self.is_development}")
+            print(f"[调试] 版本信息: {self.version_info}")
+            
+            # 改进的版本比较逻辑
+            should_update = self._should_update(latest_version, self.current_version)
+            print(f"[调试] 是否需要更新: {should_update}")
+            
+            if should_update:
                 # 查找适合当前平台的下载链接
                 download_url = self._find_platform_download(release_info['assets'])
                 
@@ -76,6 +97,22 @@ class AutoUpdater:
         except Exception as e:
             print(f"检查更新失败: {e}")
             return None
+    
+    def _should_update(self, latest: str, current: str) -> bool:
+        """改进的更新检查逻辑"""
+        try:
+            # 如果是开发版本，总是建议更新到最新的Release版本
+            if self.is_development:
+                print(f"[调试] 开发版本检测到GitHub Release，建议更新")
+                return True
+            
+            # 如果是编译版本，使用标准版本比较
+            return self._is_newer_version(latest, current)
+            
+        except Exception as e:
+            print(f"[调试] 版本比较异常: {e}")
+            # 如果比较失败，假设有新版本（保守策略）
+            return latest != current
     
     def _is_newer_version(self, latest: str, current: str) -> bool:
         """比较版本号"""
