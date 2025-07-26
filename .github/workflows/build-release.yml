@@ -53,45 +53,39 @@ jobs:
       
     - name: 更新版本信息
       run: |
-        version="${{ steps.version.outputs.VERSION }}"
-        timestamp="${{ steps.version.outputs.TIMESTAMP }}"
-
         # 创建版本信息文件
-        cat > version.py << 'EOF'
-# -*- coding: utf-8 -*-
-# 版本信息文件 - 由GitHub Actions自动生成
-# 构建时间: $timestamp
-
-import os
-
-VERSION="$version"
-BUILD_TIME="$timestamp"
-COMMIT_HASH="${{ github.sha }}"
-BRANCH="${{ github.ref_name }}"
-IS_COMPILED_VERSION = True
-
-def get_version_info():
-    return {
-        'version': VERSION,
-        'build_time': BUILD_TIME,
-        'commit_hash': COMMIT_HASH,
-        'branch': BRANCH,
-        'is_compiled': IS_COMPILED_VERSION
-    }
-
-def get_version_string():
-    return f"v{VERSION}"
-    
-def is_development_version():
-    """判断是否为开发版本"""
-    return False  # 编译版本总是返回False
-    
-def get_base_version():
-    """获取基础版本号（不包含commit hash）用于版本比较"""
-    if '-' in VERSION:
-        return VERSION.split('-')[0]
-    return VERSION
-EOF
+        echo '# -*- coding: utf-8 -*-' > version.py
+        echo '# 版本信息文件 - 由GitHub Actions自动生成' >> version.py
+        echo '' >> version.py
+        echo 'import os' >> version.py
+        echo '' >> version.py
+        echo 'VERSION="${{ steps.version.outputs.VERSION }}"' >> version.py
+        echo 'BUILD_TIME="${{ steps.version.outputs.TIMESTAMP }}"' >> version.py
+        echo 'COMMIT_HASH="${{ github.sha }}"' >> version.py
+        echo 'BRANCH="${{ github.ref_name }}"' >> version.py
+        echo 'IS_COMPILED_VERSION = True' >> version.py
+        echo '' >> version.py
+        echo 'def get_version_info():' >> version.py
+        echo '    return {' >> version.py
+        echo "        'version': VERSION," >> version.py
+        echo "        'build_time': BUILD_TIME," >> version.py
+        echo "        'commit_hash': COMMIT_HASH," >> version.py
+        echo "        'branch': BRANCH," >> version.py
+        echo "        'is_compiled': IS_COMPILED_VERSION" >> version.py
+        echo '    }' >> version.py
+        echo '' >> version.py
+        echo 'def get_version_string():' >> version.py
+        echo '    return f"v{VERSION}"' >> version.py
+        echo '    ' >> version.py
+        echo 'def is_development_version():' >> version.py
+        echo '    """判断是否为开发版本"""' >> version.py
+        echo '    return False  # 编译版本总是返回False' >> version.py
+        echo '    ' >> version.py
+        echo 'def get_base_version():' >> version.py
+        echo '    """获取基础版本号（不包含commit hash）用于版本比较"""' >> version.py
+        echo "    if '-' in VERSION:" >> version.py
+        echo "        return VERSION.split('-')[0]" >> version.py
+        echo '    return VERSION' >> version.py
 
         echo "Version file created:"
         cat version.py
@@ -181,17 +175,20 @@ EOF
         fi
 
         # 创建更新信息文件
-        cat > "release/update_info_$artifact_name.json" << EOF
-        {
-          "version": "$version",
-          "platform": "$artifact_name",
-          "build_time": "${{ steps.version.outputs.TIMESTAMP }}",
-          "download_url": "https://github.com/${{ github.repository }}/releases/download/v$version/TomatoNovelDownloader-$version-$artifact_name.zip",
-          "changelog": "自动构建版本 $version",
-          "commit": "${{ github.sha }}",
-          "branch": "${{ github.ref_name }}"
-        }
-        EOF
+        timestamp="${{ steps.version.outputs.TIMESTAMP }}"
+        repository="${{ github.repository }}"
+        commit_hash="${{ github.sha }}"
+        branch_name="${{ github.ref_name }}"
+        
+        echo '{' > "release/update_info_$artifact_name.json"
+        echo "  \"version\": \"$version\"," >> "release/update_info_$artifact_name.json"
+        echo "  \"platform\": \"$artifact_name\"," >> "release/update_info_$artifact_name.json"
+        echo "  \"build_time\": \"$timestamp\"," >> "release/update_info_$artifact_name.json"
+        echo "  \"download_url\": \"https://github.com/$repository/releases/download/v$version/TomatoNovelDownloader-$version-$artifact_name.zip\"," >> "release/update_info_$artifact_name.json"
+        echo "  \"changelog\": \"自动构建版本 $version\"," >> "release/update_info_$artifact_name.json"
+        echo "  \"commit\": \"$commit_hash\"," >> "release/update_info_$artifact_name.json"
+        echo "  \"branch\": \"$branch_name\"" >> "release/update_info_$artifact_name.json"
+        echo '}' >> "release/update_info_$artifact_name.json"
 
         echo "Release package created:"
         ls -la release/
@@ -260,6 +257,4 @@ EOF
         draft: false
         prerelease: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
