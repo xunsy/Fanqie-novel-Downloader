@@ -238,20 +238,32 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v4
 
-    - name: 生成版本号
-      id: version
-      run: |
-        timestamp=$(date +"%Y.%m.%d.%H%M")
-        commit_short="${{ github.sha }}"
-        commit_short=${commit_short:0:7}
-        version="$timestamp-$commit_short"
-        echo "VERSION=$version" >> $GITHUB_OUTPUT
-        echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
-
     - name: 下载所有构建产物
       uses: actions/download-artifact@v4
       with:
         path: artifacts/
+
+    - name: 获取最新的版本号
+      id: get_version
+      run: |
+        # 从下载的构建产物中提取版本号
+        version_file=$(find artifacts/ -name "update_info_*.json" | head -n 1)
+        if [ -n "$version_file" ]; then
+          version=$(jq -r '.version' "$version_file")
+          timestamp=$(jq -r '.build_time' "$version_file")
+          echo "VERSION=$version" >> $GITHUB_OUTPUT
+          echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
+          echo "Found version: $version"
+        else
+          # fallback方案
+          timestamp=$(date +"%Y.%m.%d.%H%M")
+          commit_short="${{ github.sha }}"
+          commit_short=${commit_short:0:7}
+          version="$timestamp-$commit_short"
+          echo "VERSION=$version" >> $GITHUB_OUTPUT
+          echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
+          echo "Fallback version: $version"
+        fi
 
     - name: 整理发布文件
       run: |
@@ -263,20 +275,20 @@ jobs:
     - name: 创建Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ steps.version.outputs.VERSION }}
-        name: TomatoNovelDownloader v${{ steps.version.outputs.VERSION }}
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        name: TomatoNovelDownloader v${{ steps.get_version.outputs.VERSION }}
         body: |
-          ## 🚀 自动构建版本 ${{ steps.version.outputs.VERSION }}
+          ## 🚀 自动构建版本 ${{ steps.get_version.outputs.VERSION }}
 
           **构建信息:**
-          - 构建时间: ${{ steps.version.outputs.TIMESTAMP }}
+          - 构建时间: ${{ steps.get_version.outputs.TIMESTAMP }}
           - 提交哈希: ${{ github.sha }}
           - 分支: ${{ github.ref_name }}
 
           **下载说明:**
-          - Windows: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-windows.zip`
-          - Linux: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-linux.zip`
-          - macOS: `TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-macos.zip`
+          - Windows: `TomatoNovelDownloader-${{ steps.get_version.outputs.VERSION }}-windows.zip`
+          - Linux: `TomatoNovelDownloader-${{ steps.get_version.outputs.VERSION }}-linux.zip`
+          - macOS: `TomatoNovelDownloader-${{ steps.get_version.outputs.VERSION }}-macos.zip`
 
           **更新内容:**
           ${{ github.event.head_commit.message }}
@@ -285,4 +297,4 @@ jobs:
         draft: false
         prerelease: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

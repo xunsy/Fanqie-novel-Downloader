@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, font
+from tkinter import ttk, messagebox, filedialog, font, scrolledtext
 import threading
 import os
 import time
@@ -10,6 +10,14 @@ from io import BytesIO
 from tomato_novel_api import TomatoNovelAPI
 from ebooklib import epub
 from updater import AutoUpdater, get_current_version
+
+# 添加HEIC支持
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    print("HEIC格式支持已启用")
+except ImportError:
+    print("pillow-heif未安装，HEIC格式可能无法显示")
 
 class ModernNovelDownloaderGUI:
     def __init__(self, root):
@@ -474,6 +482,13 @@ class ModernNovelDownloaderGUI:
                                  command=lambda c=color: self.change_theme(c))
             theme_btn.pack(side=tk.LEFT, padx=(0, 5))
         
+        # 恢复默认蓝色主题按钮
+        reset_theme_btn = self.create_button(theme_frame,
+                                           "↺ 恢复默认",
+                                           lambda: self.change_theme('#1976D2'),
+                                           self.colors['primary'])
+        reset_theme_btn.pack(side=tk.RIGHT)
+        
         # 更新设置卡片
         update_card = self.create_card(main_container, "🔄 自动更新")
         
@@ -639,7 +654,29 @@ class ModernNovelDownloaderGUI:
     
     def _is_novel_content(self, book):
         """判断是否为小说内容，过滤掉听书、漫画等"""
-        # 直接检查书籍类型字段
+        # 检查来源，过滤听书工作室
+        source = book.get('source', '')
+        if '畅听工作室' in source or '有声' in source or '听书' in source:
+            return False
+        
+        # 检查作者字段，如果包含"主播"关键词，很可能是听书
+        author = book.get('author', '')
+        if '主播' in author or '播音' in author or '朗读' in author:
+            return False
+        
+        # 检查字数，听书通常word_number为0或很小
+        word_number = str(book.get('word_number', '0'))
+        if word_number == '0' or word_number == '' or (word_number.isdigit() and int(word_number) < 1000):
+            # 但要排除一些特殊情况，如果是正在连载的小说
+            creation_status = book.get('creation_status', '1')
+            serial_count = book.get('serial_count', '0')
+            if creation_status == '1' and serial_count and serial_count.isdigit() and int(serial_count) > 10:
+                # 连载中且章节数较多，可能是小说
+                pass
+            else:
+                return False
+        
+        # 检查书籍类型字段
         book_type = book.get('book_type', '0')
         is_ebook = book.get('is_ebook', '1')
         
@@ -653,10 +690,17 @@ class ModernNovelDownloaderGUI:
         
         # 检查分类，排除明确的非小说分类
         category = book.get('category', '').lower()
-        excluded_categories = ['听书', '有声书', '漫画', '连环画', '绘本']
+        excluded_categories = ['听书', '有声书', '漫画', '连环画', '绘本', '音频']
         
         for excluded in excluded_categories:
             if excluded in category:
+                return False
+        
+        # 检查sub_info字段，听书通常显示"章"而不是"人在读"
+        sub_info = book.get('sub_info', '')
+        if '章' in sub_info and '人在读' not in sub_info:
+            # 这可能是听书，进一步检查
+            if word_number == '0':
                 return False
         
         # 其余情况认为是小说
@@ -673,28 +717,40 @@ class ModernNovelDownloaderGUI:
                 novels = []
                 data = result['data']
                 
-                # 检查数据结构，提取书籍信息
-                search_tabs = data.get('search_tabs', [])
-                if isinstance(search_tabs, list):
-                    for tab_data in search_tabs:
-                        # 只处理小说相关的标签页，过滤掉听书等其他类型
-                        tab_type = tab_data.get('tab_type', 0)
-                        tab_title = tab_data.get('title', '')
-                        
-                        # tab_type=1 通常是综合/小说，过滤掉听书(tab_type=2)等其他类型
-                        if tab_type == 1 and isinstance(tab_data, dict) and tab_data.get('data'):
-                            tab_novels = tab_data['data']
-                            if isinstance(tab_novels, list):
-                                for item in tab_novels:
-                                    if isinstance(item, dict) and item.get('book_data'):
-                                        book_data_list = item['book_data']
-                                        if isinstance(book_data_list, list):
-                                            # 过滤小说内容，排除听书、漫画等其他类型
-                                            for book in book_data_list:
-                                                if (book.get('book_name') and 
-                                                    book.get('author') and
-                                                    self._is_novel_content(book)):
-                                                    novels.append(book)
+                # 检查新的数据结构 - API返回的是简化格式
+                items = data.get('items', [])
+                if isinstance(items, list):
+                    # 直接处理items列表中的书籍数据
+                    for book in items:
+                        if (isinstance(book, dict) and 
+                            book.get('book_name') and 
+                            book.get('author') and 
+                            book.get('book_id') and
+                            self._is_novel_content(book)):
+                            novels.append(book)
+                else:
+                    # 检查旧的数据结构（兼容性处理）
+                    search_tabs = data.get('search_tabs', [])
+                    if isinstance(search_tabs, list):
+                        for tab_data in search_tabs:
+                            # 只处理小说相关的标签页，过滤掉听书等其他类型
+                            tab_type = tab_data.get('tab_type', 0)
+                            tab_title = tab_data.get('title', '')
+                            
+                            # tab_type=1 通常是综合/小说，过滤掉听书(tab_type=2)等其他类型
+                            if tab_type == 1 and isinstance(tab_data, dict) and tab_data.get('data'):
+                                tab_novels = tab_data['data']
+                                if isinstance(tab_novels, list):
+                                    for item in tab_novels:
+                                        if isinstance(item, dict) and item.get('book_data'):
+                                            book_data_list = item['book_data']
+                                            if isinstance(book_data_list, list):
+                                                # 过滤小说内容，排除听书、漫画等其他类型
+                                                for book in book_data_list:
+                                                    if (book.get('book_name') and 
+                                                        book.get('author') and
+                                                        self._is_novel_content(book)):
+                                                        novels.append(book)
                 
                 if novels:
                     self.search_results_data = novels
@@ -963,30 +1019,93 @@ class ModernNovelDownloaderGUI:
         else:
             messagebox.showerror("错误", "无法获取书籍ID")
     
-    def download_image(self, url, size=(200, 280)):
+    def download_image(self, url, size=(120, 160)):
         """下载并调整图片大小"""
+        if not url:
+            return None
+            
         try:
+            # 基于测试结果优化URL尝试顺序
+            original_url = url
+            urls_to_try = []
+            
+            if '.heic' in url.lower():
+                # HEIC格式成功率最高，优先使用原始HEIC URL
+                urls_to_try.append(original_url)
+                
+                # 只在HEIC失败时尝试JPG（JPG偶尔会成功）
+                jpg_url = url.replace('.heic', '.jpg').replace('.HEIC', '.jpg')
+                urls_to_try.append(jpg_url)
+                
+                # 跳过WebP和PNG，因为测试显示它们都返回403
+            else:
+                # 对于非HEIC格式，直接使用原URL
+                urls_to_try.append(original_url)
+            
+            print(f"尝试加载封面: {len(urls_to_try)}个优化URL")
+            
             # 添加请求头，模拟浏览器访问
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Referer': 'https://www.tomatonovel.com/',
-                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+                'Accept': 'image/webp,image/apng,image/jpeg,image/png,image/*,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Cache-Control': 'no-cache'
             }
             
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
+            for i, test_url in enumerate(urls_to_try):
+                try:
+                    print(f"尝试URL {i+1}/{len(urls_to_try)}: {test_url[:100]}...")
+                    
+                    response = requests.get(test_url, headers=headers, timeout=15)
+                    response.raise_for_status()
+                    
+                    # 检查响应内容类型
+                    content_type = response.headers.get('content-type', '')
+                    content_length = len(response.content)
+                    
+                    print(f"响应: {content_type}, 大小: {content_length} bytes")
+                    
+                    if not content_type.startswith('image/') or content_length < 1000:
+                        print(f"无效的图片响应，跳过")
+                        continue
+                    
+                    # 尝试打开图片
+                    try:
+                        image = Image.open(BytesIO(response.content))
+                        
+                        # 转换图片模式
+                        if image.mode == 'RGBA':
+                            # 创建白色背景
+                            background = Image.new('RGB', image.size, (255, 255, 255))
+                            background.paste(image, mask=image.split()[-1])
+                            image = background
+                        elif image.mode not in ('RGB', 'L'):
+                            image = image.convert('RGB')
+                        
+                        # 调整大小
+                        image = image.resize(size, Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(image)
+                        
+                        print(f"封面加载成功！")
+                        return photo
+                        
+                    except Exception as img_error:
+                        print(f"PIL处理失败: {img_error}")
+                        continue
+                        
+                except requests.RequestException as req_error:
+                    print(f"请求失败: {req_error}")
+                    continue
+                except Exception as e:
+                    print(f"URL处理失败: {e}")
+                    continue
             
-            # 检查响应内容类型
-            content_type = response.headers.get('content-type', '')
-            if not content_type.startswith('image/'):
-                print(f"URL返回的不是图片类型: {content_type}")
-                return None
-            
-            image = Image.open(BytesIO(response.content))
-            image = image.resize(size, Image.Resampling.LANCZOS)
-            return ImageTk.PhotoImage(image)
+            print("所有URL都失败了")
+            return None
+                
         except Exception as e:
-            print(f"下载图片失败 ({url}): {e}")
+            print(f"图片下载完全失败: {e}")
             return None
     
     def show_book_details(self):
@@ -1375,16 +1494,27 @@ class ModernNovelDownloaderGUI:
         threading.Thread(target=self._download_thread, args=(book_id, save_path, file_format, mode), daemon=True).start()
     
     def _download_thread(self, book_id, save_path, file_format, mode):
-        """下载线程函数"""
+        """下载线程函数 - 完全集成enhanced_downloader.py的高速下载功能"""
         try:
-            # 这里可以集成multi_downloader的功能
-            # 暂时使用简化的下载逻辑
-            self.root.after(0, lambda: self.progress_callback(10, "获取书籍信息..."))
+            # 设置进度回调
+            def gui_progress_callback(progress, message):
+                """GUI进度回调，将下载器的回调转发到GUI"""
+                if progress >= 0:  # 只有有效进度才更新
+                    self.root.after(0, lambda p=progress, m=message: self.progress_callback(p, m))
+                else:
+                    # 只更新消息，不改变进度
+                    self.root.after(0, lambda m=message: self.log(m))
+            
+            # 设置API的进度回调
+            self.api.set_progress_callback(gui_progress_callback)
+            
+            self.root.after(0, lambda: self.progress_callback(5, "初始化增强型下载器（集成enhanced_downloader.py功能）..."))
             
             # 获取书籍信息
             info_result = self.api.get_novel_info(book_id)
-            if not info_result or not info_result.get('success'):
-                raise Exception("获取书籍信息失败，可能是网络问题或服务器暂时不可用，请稍后重试")
+            if not info_result or not info_result.get('isSuccess'):
+                error_msg = info_result.get('errorMsg', '未知错误') if info_result else '无响应'
+                raise Exception(f"获取书籍信息失败: {error_msg}")
             
             # 检查API返回的消息
             api_data = info_result.get('data', {})
@@ -1394,116 +1524,96 @@ class ModernNovelDownloaderGUI:
             
             # 获取书名
             raw_data = api_data.get('data', {})
-            # 检查data是否为有效的字典
             if isinstance(raw_data, dict) and raw_data:
                 book_data = raw_data
                 book_name = book_data.get('book_name', book_id)
+                author_name = book_data.get('author', '未知作者')
+                description = book_data.get('abstract', '无简介')
             else:
-                # 如果书籍数据无效，抛出错误
                 raise Exception(f"无法获取书籍 {book_id} 的详细信息")
             
-            self.root.after(0, lambda: self.progress_callback(30, f"准备下载《{book_name}》..."))
-            
-            # 获取章节列表
-            self.root.after(0, lambda: self.progress_callback(40, "获取章节列表..."))
-            details_result = self.api.get_book_details(book_id)
-            if not details_result or not details_result.get('data', {}).get('allItemIds'):
-                raise Exception("获取章节列表失败，可能是网络问题或服务器繁忙，请稍后重试")
-            
-            all_item_ids = details_result['data']['allItemIds']
+            self.root.after(0, lambda: self.progress_callback(10, f"准备使用enhanced_downloader.py的高速下载《{book_name}》..."))
             
             if mode == "full":
-                # 整本下载 - 分批处理避免URL过长
-                self.root.after(0, lambda: self.progress_callback(50, f"开始下载整本小说 ({len(all_item_ids)}章节)..."))
+                # 整本下载 - 直接使用增强型下载器
+                self.root.after(0, lambda: self.progress_callback(15, f"启动enhanced_downloader.py高速下载模式..."))
                 
-                # 分批下载，每批最多300章
-                batch_size = 300
-                all_chapters = []
+                # 直接使用增强型下载器的run_download方法
+                downloader = self.api.enhanced_downloader
+                downloader.progress_callback = gui_progress_callback
                 
-                for i in range(0, len(all_item_ids), batch_size):
-                    batch_ids = all_item_ids[i:i+batch_size]
-                    current_batch = i // batch_size + 1
-                    total_batches = (len(all_item_ids) + batch_size - 1) // batch_size
-                    
-                    progress = 50 + (i / len(all_item_ids)) * 30  # 50-80%的进度用于下载
-                    self.root.after(0, lambda p=progress, b=current_batch, t=total_batches: 
-                                   self.progress_callback(p, f"下载第{b}/{t}批章节..."))
-                    
-                    result = self.api.download_full_novel(book_id, batch_ids)
-                    if not result or not result.get('success'):
-                        raise Exception(f"第{current_batch}批章节下载失败，可能是网络超时或服务器繁忙，请稍后重试")
-                    
-                    batch_chapters = result.get('data', {}).get('items', [])
-                    all_chapters.extend(batch_chapters)
+                # 在线程中运行下载
+                downloader.run_download(book_id, save_path, file_format)
                 
-                self.root.after(0, lambda: self.progress_callback(80, "正在保存文件..."))
+                # 检查是否取消
+                if downloader.is_cancelled:
+                    self.root.after(0, lambda: self.progress_callback(0, "下载已取消"))
+                    return
                 
-                # 保存文件
+                # 获取保存的文件路径
                 filename = f"{book_name}.{file_format}"
                 filepath = os.path.join(save_path, filename)
                 
-                # 根据格式选择保存方式
-                if file_format.lower() == 'epub':
-                    self._save_as_epub(filepath, book_data, all_chapters)
-                else:
-                    self._save_as_txt(filepath, book_data, all_chapters)
-                
-                self.root.after(0, lambda path=filepath: self.progress_callback(100, f"下载完成！文件已保存到: {path}"))
+                self.root.after(0, lambda path=filepath: self.progress_callback(100, f"高速下载完成！文件已保存到: {path}"))
                 
             else:
                 # 章节下载模式
-                self.root.after(0, lambda: self.progress_callback(50, "章节下载模式：请选择章节范围..."))
+                self.root.after(0, lambda: self.progress_callback(15, "章节下载模式：请选择章节范围..."))
                 
-                # 创建章节选择对话框
-                chapter_range = self._get_chapter_range(len(all_item_ids))
+                # 在主线程中创建章节选择对话框
+                chapter_range = None
+                def get_range():
+                    nonlocal chapter_range
+                    # 获取章节总数
+                    details_result = self.api.get_book_details(book_id)
+                    if details_result and details_result.get('data', {}).get('allItemIds'):
+                        total_chapters = len(details_result['data']['allItemIds'])
+                        chapter_range = self._get_chapter_range(total_chapters)
+                
+                self.root.after(0, get_range)
+                
+                # 等待用户选择
+                import time
+                timeout = 30  # 30秒超时
+                elapsed = 0
+                while chapter_range is None and elapsed < timeout:
+                    time.sleep(0.1)
+                    elapsed += 0.1
+                
                 if not chapter_range:
-                    self.root.after(0, lambda: self.progress_callback(0, "用户取消了章节选择"))
+                    self.root.after(0, lambda: self.progress_callback(0, "章节选择超时或用户取消"))
                     return
                 
                 start_idx, end_idx = chapter_range
-                selected_item_ids = all_item_ids[start_idx:end_idx+1]
                 
-                self.root.after(0, lambda: self.progress_callback(60, f"开始下载章节 {start_idx+1}-{end_idx+1} ({len(selected_item_ids)}章)..."))
+                self.root.after(0, lambda: self.progress_callback(20, f"使用enhanced_downloader.py高速下载章节 {start_idx+1}-{end_idx+1}..."))
                 
-                # 分批下载章节
-                batch_size = 219
-                all_chapters = []
+                # 使用增强型下载器的范围下载功能
+                downloader = self.api.enhanced_downloader
+                downloader.progress_callback = gui_progress_callback
                 
-                for i in range(0, len(selected_item_ids), batch_size):
-                    batch_ids = selected_item_ids[i:i+batch_size]
-                    current_batch = i // batch_size + 1
-                    total_batches = (len(selected_item_ids) + batch_size - 1) // batch_size
-                    
-                    progress = 60 + (i / len(selected_item_ids)) * 20  # 60-80%的进度用于下载
-                    self.root.after(0, lambda p=progress, b=current_batch, t=total_batches: 
-                                   self.progress_callback(p, f"下载第{b}/{t}批章节..."))
-                    
-                    result = self.api.download_full_novel(book_id, batch_ids)
-                    if not result or not result.get('success'):
-                        raise Exception(f"第{current_batch}批章节下载失败，可能是网络超时或服务器繁忙，请稍后重试")
-                    
-                    batch_chapters = result.get('data', {}).get('items', [])
-                    all_chapters.extend(batch_chapters)
+                # 在线程中运行下载
+                downloader.run_download(book_id, save_path, file_format, start_idx, end_idx)
                 
-                self.root.after(0, lambda: self.progress_callback(80, "正在保存文件..."))
+                # 检查是否取消
+                if downloader.is_cancelled:
+                    self.root.after(0, lambda: self.progress_callback(0, "下载已取消"))
+                    return
                 
-                # 保存文件
+                # 获取保存的文件路径
                 filename = f"{book_name}_第{start_idx+1}-{end_idx+1}章.{file_format}"
                 filepath = os.path.join(save_path, filename)
                 
-                # 根据格式选择保存方式
-                if file_format.lower() == 'epub':
-                    self._save_as_epub(filepath, book_data, all_chapters, f"第{start_idx+1}-{end_idx+1}章")
-                else:
-                    self._save_as_txt(filepath, book_data, all_chapters)
-                
-                self.root.after(0, lambda path=filepath: self.progress_callback(100, f"章节下载完成！文件已保存到: {path}"))
+                self.root.after(0, lambda path=filepath: self.progress_callback(100, f"章节高速下载完成！文件已保存到: {path}"))
                 
         except Exception as e:
             error_msg = str(e)
             self.root.after(0, lambda: messagebox.showerror("下载失败", error_msg))
             self.root.after(0, lambda: self.log(f"下载失败: {error_msg}"))
         finally:
+            # 清理进度回调
+            if hasattr(self.api, 'set_progress_callback'):
+                self.api.set_progress_callback(None)
             self.root.after(0, self._download_finished)
     
     def _get_chapter_range(self, total_chapters):

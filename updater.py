@@ -101,13 +101,20 @@ class AutoUpdater:
     def _should_update(self, latest: str, current: str) -> bool:
         """改进的更新检查逻辑"""
         try:
-            # 如果是开发版本，总是建议更新到最新的Release版本
-            if self.is_development:
-                print(f"[调试] 开发版本检测到GitHub Release，建议更新")
-                return True
+            # 先进行版本比较
+            is_newer = self._is_newer_version(latest, current)
             
-            # 如果是编译版本，使用标准版本比较
-            return self._is_newer_version(latest, current)
+            if self.is_development:
+                # 开发版本：只有当GitHub Release确实更新时才提示更新
+                if is_newer:
+                    print(f"[调试] 开发版本检测到更新的GitHub Release，建议更新")
+                    return True
+                else:
+                    print(f"[调试] 开发版本已是最新或更新版本，无需更新")
+                    return False
+            else:
+                # 编译版本：使用标准版本比较
+                return is_newer
             
         except Exception as e:
             print(f"[调试] 版本比较异常: {e}")
