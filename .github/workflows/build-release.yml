@@ -115,9 +115,24 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         echo "安装requirements.txt中的依赖..."
-        pip install -r requirements.txt
+        
+        # 尝试安装所有依赖，如果失败则逐个安装
+        if ! pip install -r requirements.txt; then
+          echo "批量安装失败，尝试逐个安装..."
+          pip install requests>=2.28.0,<3.0.0
+          pip install Pillow>=9.0.0,<11.0.0
+          pip install ebooklib>=0.18,<0.19
+          pip install fake-useragent>=1.5.0,<2.0.0
+          pip install tqdm>=4.65.0,<5.0.0
+          pip install beautifulsoup4>=4.12.0,<5.0.0
+          pip install urllib3>=1.26.0,<3.0.0
+          # 可选依赖
+          pip install pillow-heif>=1.0.0 || echo "pillow-heif安装失败，但这是可选的"
+        fi
+        
         echo "安装PyInstaller..."
         pip install pyinstaller
+        
         echo "验证关键依赖是否安装成功..."
         python -c "import bs4; print('✓ beautifulsoup4/bs4 安装成功')"
         python -c "import fake_useragent; print('✓ fake_useragent 安装成功')"
@@ -131,7 +146,13 @@ jobs:
     - name: 测试模块导入
       run: |
         echo "运行完整的模块导入测试..."
-        python test_imports.py
+        if [ -f "test_imports.py" ]; then
+          python test_imports.py
+        else
+          echo "⚠️ test_imports.py 不存在，跳过模块导入测试"
+          echo "手动测试关键模块..."
+          python -c "import requests, PIL, ebooklib, bs4, fake_useragent, tqdm, urllib3; print('✅ 所有关键模块导入成功')"
+        fi
       shell: bash
         
     - name: 检查文件存在性
