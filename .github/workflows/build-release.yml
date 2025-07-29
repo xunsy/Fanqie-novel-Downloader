@@ -103,10 +103,35 @@ jobs:
         fi
       shell: bash
 
+    - name: 缓存Python依赖
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
     - name: 安装Python依赖
       run: |
         python -m pip install --upgrade pip
-        pip install requests Pillow ebooklib pyinstaller
+        echo "安装requirements.txt中的依赖..."
+        pip install -r requirements.txt
+        echo "安装PyInstaller..."
+        pip install pyinstaller
+        echo "验证关键依赖是否安装成功..."
+        python -c "import bs4; print('✓ beautifulsoup4/bs4 安装成功')"
+        python -c "import fake_useragent; print('✓ fake_useragent 安装成功')"
+        python -c "import tqdm; print('✓ tqdm 安装成功')"
+        python -c "import requests; print('✓ requests 安装成功')"
+        python -c "import PIL; print('✓ Pillow 安装成功')"
+        python -c "import ebooklib; print('✓ ebooklib 安装成功')"
+        echo "所有依赖安装验证完成！"
+      shell: bash
+
+    - name: 测试模块导入
+      run: |
+        echo "运行完整的模块导入测试..."
+        python test_imports.py
       shell: bash
         
     - name: 检查文件存在性
@@ -125,32 +150,53 @@ jobs:
 
     - name: 编译可执行文件
       run: |
-        # 创建PyInstaller配置
-        app_name="TomatoNovelDownloader-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}"
-
-        # 根据平台编译
+        echo "开始编译可执行文件..."
+        
+        # 检查是否存在build.spec文件
         if [ -f "build.spec" ]; then
-          # 使用现有的build.spec
-          pyinstaller build.spec
+          echo "✅ 使用build.spec配置文件编译"
+          pyinstaller build.spec --clean --noconfirm
         else
-          # 创建基本的pyinstaller命令
-          if [ -f "icon.ico" ]; then
-            pyinstaller --onefile --windowed \
-              --name="TomatoNovelDownloader" \
-              --add-data="version.py:." \
-              --icon="icon.ico" \
-              gui.py
-          else
-            pyinstaller --onefile --windowed \
-              --name="TomatoNovelDownloader" \
-              --add-data="version.py:." \
-              gui.py
-          fi
+          echo "⚠️ 未找到build.spec，使用默认配置编译"
+          pyinstaller --onefile --windowed \
+            --name="TomatoNovelDownloader" \
+            --add-data="version.py:." \
+            --hidden-import=bs4 \
+            --hidden-import=beautifulsoup4 \
+            --hidden-import=fake_useragent \
+            --hidden-import=tqdm \
+            --hidden-import=requests \
+            --hidden-import=urllib3 \
+            --hidden-import=ebooklib \
+            --hidden-import=PIL \
+            --hidden-import=PIL.Image \
+            --hidden-import=PIL.ImageTk \
+            gui.py
         fi
 
         # 检查编译结果
         echo "编译完成，检查输出："
         ls -la dist/
+        
+        # 验证可执行文件是否创建成功
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          if [ -f "dist/TomatoNovelDownloader.exe" ]; then
+            echo "✅ Windows可执行文件编译成功"
+            file dist/TomatoNovelDownloader.exe || echo "文件信息获取失败"
+          else
+            echo "❌ Windows可执行文件编译失败"
+            exit 1
+          fi
+        else
+          if [ -f "dist/TomatoNovelDownloader" ]; then
+            echo "✅ Unix可执行文件编译成功"
+            file dist/TomatoNovelDownloader || echo "文件信息获取失败"
+            chmod +x dist/TomatoNovelDownloader
+          else
+            echo "❌ Unix可执行文件编译失败"
+            exit 1
+          fi
+        fi
       shell: bash
       
     - name: 创建发布包

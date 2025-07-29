@@ -32,6 +32,9 @@ from urllib.parse import urlencode
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
 
+# 全局锁
+print_lock = threading.Lock()
+
 # 全局配置
 CONFIG = {
     "max_workers": 4,
@@ -79,7 +82,8 @@ def make_request(url, headers=None, params=None, data=None, method='GET', verify
         
         return response
     except Exception as e:
-        print(f"请求失败: {str(e)}")
+        with print_lock:
+            print(f"请求失败: {str(e)}")
         raise
 
 def get_headers() -> Dict[str, str]:
@@ -138,12 +142,15 @@ def fetch_api_endpoints_from_server():
                             endpoint["data"] = source.get("data", {})
                         CONFIG["api_endpoints"].append(endpoint)
             
-            print("成功从服务器获取API列表!")
+            with print_lock:
+                print("成功从服务器获取API列表!")
             return True
         else:
-            print(f"获取API列表失败，状态码: {response.status_code}")
+            with print_lock:
+                print(f"获取API列表失败，状态码: {response.status_code}")
     except Exception as e:
-        print(f"获取API列表异常: {str(e)}")
+        with print_lock:
+            print(f"获取API列表异常: {str(e)}")
 
 def extract_chapters(soup):
     """解析章节列表"""
@@ -176,7 +183,8 @@ def extract_chapters(soup):
 def batch_download_chapters(item_ids, headers):
     """批量下载章节内容"""
     if not CONFIG["batch_config"]["enabled"] or CONFIG["batch_config"]["name"] != "qyuing":
-        print("批量下载功能仅限qyuing API")
+        with print_lock:
+            print("批量下载功能仅限qyuing API")
         return None
         
     batch_config = CONFIG["batch_config"]
@@ -204,10 +212,12 @@ def batch_download_chapters(item_ids, headers):
                 return data["data"]
             return data
         else:
-            print(f"批量下载失败，状态码: {response.status_code}")
+            with print_lock:
+                print(f"批量下载失败，状态码: {response.status_code}")
             return None
     except Exception as e:
-        print(f"批量下载异常！")
+        with print_lock:
+            print(f"批量下载异常！")
         return None
 
 def process_chapter_content(content):
@@ -241,47 +251,27 @@ def process_chapter_content(content):
         formatted_content = re.sub(r'\n{3,}', '\n\n', formatted_content).strip()
         return formatted_content
     except Exception as e:
-        print(f"内容处理错误: {str(e)}")
+        with print_lock:
+            print(f"内容处理错误: {str(e)}")
         return str(content)
 
 def down_text(chapter_id, headers, book_id=None):
     """下载章节内容"""
-    content = ""
-    chapter_title = ""
-    first_error_printed = False
-
-    if not hasattr(down_text, "api_status"):
-        down_text.api_status = {endpoint["url"]: {
-            "last_response_time": float('inf'),
-            "error_count": 0,
-            "last_try_time": 0
-        } for endpoint in CONFIG["api_endpoints"]}
-
-    # 记录未成功的id
-    failed_chapter_id = chapter_id
-    
     for idx, endpoint in enumerate(CONFIG["api_endpoints"]):
         current_endpoint = endpoint["url"]
         api_name = endpoint["name"]
         
-        down_text.api_status[endpoint["url"]]["last_try_time"] = time.time()
-        
         try:
             time.sleep(random.uniform(0.1, 0.5))
-            start_time = time.time()
             
             if api_name == "fanqie_sdk":
-                params = endpoint.get("params", {
-                    "sdk_type": "4",
-                    "novelsdk_aid": "638505"
-                })
-                data = endpoint.get("data", {
+                params = endpoint.get("params", {"sdk_type": "4", "novelsdk_aid": "638505"})
+                data = {
                     "item_id": chapter_id,
                     "need_book_info": 1,
                     "show_picture": 1,
                     "sdk_type": 1
-                })
-                data["item_id"] = chapter_id
+                }
                 
                 response = make_request(
                     current_endpoint,
@@ -292,62 +282,84 @@ def down_text(chapter_id, headers, book_id=None):
                     timeout=CONFIG["request_timeout"],
                     verify=False
                 )
-            else:
-                current_endpoint = endpoint["url"].format(chapter_id=failed_chapter_id)
+                
+                if response.status_code != 200:
+                    continue
+                
+                try:
+                    data = response.json()
+                    content = data.get("data", {}).get("content", "")
+                    if content:
+                        processed = process_chapter_content(content)
+                        return data.get("data", {}).get("title", ""), processed
+                except json.JSONDecodeError:
+                    continue
+
+            elif api_name == "fqweb":
                 response = make_request(
-                    current_endpoint, 
+                    current_endpoint.format(chapter_id=chapter_id),
                     headers=headers.copy(),
                     timeout=CONFIG["request_timeout"],
                     verify=False
                 )
-            
-            response_time = time.time() - start_time
-            down_text.api_status[endpoint["url"]].update({
-                "last_response_time": response_time,
-                "error_count": max(0, down_text.api_status[endpoint["url"]]["error_count"] - 1)
-            })
-            
-            data = response.json()
-            
-            if api_name == "fanqie_sdk":
-                content = data.get("data", {}).get("content", "")
-                chapter_title = data.get("data", {}).get("title", "")
-                if content:
-                    processed_content = process_chapter_content(content)
-                    processed_content = re.sub(r'^(\s*)', r'    ', processed_content, flags=re.MULTILINE)
-                    return chapter_title, processed_content
-            elif api_name == "lsjk" and content:
-                paragraphs = re.findall(r'<p idx="\d+">(.*?)</p>', content)
-                cleaned_content = "\n".join(p.strip() for p in paragraphs if p.strip())
-                formatted_content = '\n'.join('    ' + line if line.strip() else line 
-                                            for line in cleaned_content.split('\n'))
-                return chapter_title, formatted_content
-            elif api_name == "qyuing" and data.get("code") == 0 and content:
-                processed_content = process_chapter_content(content)
-                return chapter_title, processed_content
-            elif api_name == "fqweb":
-                if data.get("data", {}).get("code") in ["0", 0]:
-                    content = data.get("data", {}).get("data", {}).get("content", "")
-                    if content:
-                        processed_content = process_chapter_content(content)
-                        processed_content = re.sub(r'^(\s*)', r'    ', processed_content, flags=re.MULTILINE)                        
-                        return "", processed_content
+                
+                try:
+                    data = response.json()
+                    if data.get("data", {}).get("code") in ["0", 0]:
+                        content = data.get("data", {}).get("data", {}).get("content", "")
+                        if content:
+                            processed = process_chapter_content(content)
+                            return "", processed
+                except:
+                    continue
 
-            if not first_error_printed:
-                print(f"API：{api_name}错误，无法下载章节，正在重试")
-                first_error_printed = True
-            down_text.api_status[endpoint["url"]]["error_count"] += 1
+            elif api_name == "qyuing":
+                response = make_request(
+                    current_endpoint.format(chapter_id=chapter_id),
+                    headers=headers.copy(),
+                    timeout=CONFIG["request_timeout"],
+                    verify=False
+                )
+                
+                try:
+                    data = response.json()
+                    if data.get("code") == 0:
+                        content = data.get("data", {}).get(chapter_id, {}).get("content", "")
+                        if content:
+                            return "", process_chapter_content(content)
+                except:
+                    continue
+
+            elif api_name == "lsjk":
+                response = make_request(
+                    current_endpoint.format(chapter_id=chapter_id),
+                    headers=headers.copy(),
+                    timeout=CONFIG["request_timeout"],
+                    verify=False
+                )
+                
+                if response.text:
+                    try:
+                        paragraphs = re.findall(r'<p idx="\d+">(.*?)</p>', response.text)
+                        cleaned = "\n".join(p.strip() for p in paragraphs if p.strip())
+                        formatted = '\n'.join('    ' + line if line.strip() else line 
+                                            for line in cleaned.split('\n'))
+                        return "", formatted
+                    except:
+                        continue
+
         except Exception as e:
-            if not first_error_printed:
-                print(f"API：{api_name}错误，无法下载章节，正在重试")
-                first_error_printed = True
-            down_text.api_status[endpoint["url"]]["error_count"] += 1
-            time.sleep(3)
+            if idx < len(CONFIG["api_endpoints"]) - 1:
+                with print_lock:
+                    print(f"API {api_name} 请求异常: {str(e)[:50]}...，尝试切换")
+            time.sleep(1)
         
         if idx < len(CONFIG["api_endpoints"]) - 1:
-            print("正在切换到下一个api")
+            with print_lock:
+                print("正在切换到下一个api")
     
-    print(f"所有API尝试失败，无法下载章节 {chapter_id}")
+    with print_lock:
+        print(f"章节 {chapter_id} 所有API均失败")
     return None, None
 
 def get_chapters_from_api(book_id, headers):
@@ -382,7 +394,8 @@ def get_chapters_from_api(book_id, headers):
         
         return final_chapters
     except Exception as e:
-        print(f"获取章节列表失败: {str(e)}")
+        with print_lock:
+            print(f"获取章节列表失败: {str(e)}")
         return None
 
 def get_book_info(book_id, headers):
@@ -391,7 +404,8 @@ def get_book_info(book_id, headers):
     try:
         response = requests.get(url, headers=headers, timeout=CONFIG["request_timeout"])
         if response.status_code != 200:
-            print(f"网络请求失败，状态码: {response.status_code}")
+            with print_lock:
+                print(f"网络请求失败，状态码: {response.status_code}")
             return None, None, None
 
         soup = bs4.BeautifulSoup(response.text, 'html.parser')
@@ -415,8 +429,77 @@ def get_book_info(book_id, headers):
         
         return name, author_name, description
     except Exception as e:
-        print(f"获取书籍信息失败: {str(e)}")
+        with print_lock:
+            print(f"获取书籍信息失败: {str(e)}")
         return None, None, None
+
+def get_book_info_enhanced(book_id, headers):
+    """
+    使用fqweb API获取详细书籍信息
+    返回比网页爬取更丰富的信息
+    """
+    try:
+        url = f"http://fqweb.jsj66.com/info?book_id={book_id}"
+        response = requests.get(url, headers=headers, timeout=CONFIG["request_timeout"])
+        
+        if response.status_code != 200:
+            with print_lock:
+                print(f"API请求失败，状态码: {response.status_code}")
+            return None
+        
+        data = response.json()
+        
+        # 检查响应格式
+        if not data.get('isSuccess') or data.get('data', {}).get('code') != '0':
+            with print_lock:
+                print("API返回错误信息")
+            return None
+        
+        book_data = data['data']['data']
+        
+        # 构造增强的书籍信息
+        enhanced_info = {
+            'book_id': book_data.get('book_id', book_id),
+            'book_name': book_data.get('book_name', '未知书名'),
+            'author': book_data.get('author', '未知作者'),
+            'author_id': book_data.get('author_id', ''),
+            'abstract': book_data.get('abstract', '无简介'),
+            'category': book_data.get('category', '未知分类'),
+            'tags': book_data.get('tags', ''),
+            'score': book_data.get('score', '0'),
+            'word_number': book_data.get('word_number', '0'),
+            'serial_count': book_data.get('serial_count', '0'),
+            'creation_status': book_data.get('creation_status', '0'),  # 0=完结, 1=连载
+            'read_count': book_data.get('read_count', '0'),
+            'thumb_url': book_data.get('thumb_url', ''),
+            'source': '番茄小说',
+            'first_chapter_title': book_data.get('first_chapter_title', ''),
+            'last_chapter_title': book_data.get('last_chapter_title', ''),
+            'last_chapter_update_time': book_data.get('last_chapter_update_time', ''),
+            'create_time': book_data.get('create_time', ''),
+            'copyright_info': book_data.get('copyright_info', ''),
+            'role': book_data.get('role', ''),  # 主角名
+            
+            # 作者信息
+            'author_info': book_data.get('author_info', {}),
+            
+            # 标签详细信息
+            'title_page_tags': book_data.get('title_page_tags', []),
+            
+            # 其他详细信息
+            'genre': book_data.get('genre', '0'),
+            'gender': book_data.get('gender', '1'),
+            'exclusive': book_data.get('exclusive', '0'),
+            'for_young': book_data.get('for_young', False),
+            'platform': book_data.get('platform', '2'),
+        }
+        
+        return enhanced_info
+        
+    except Exception as e:
+        with print_lock:
+            print(f"获取增强书籍信息失败: {str(e)}")
+        return None
 
 def load_status(save_path):
     """加载下载状态"""
@@ -683,7 +766,12 @@ class EnhancedNovelDownloader:
                         ext = 'png'
                     elif 'webp' in ct:
                         ext = 'webp'
+                    elif 'heic' in ct:
+                        # EPUB不支持heic格式，转换为jpg
+                        ext = 'jpg'
+                        print("检测到HEIC格式封面，转换为JPG格式")
                     book.set_cover(f"cover.{ext}", resp.content)
+                    print(f"成功添加封面 (格式: {ext})")
             except Exception as e:
                 print(f"封面下载失败: {e}")
 
@@ -771,7 +859,7 @@ class TomatoNovelAPI:
 
     def get_novel_info(self, book_id):
         """
-        获取小说信息 - 使用参考.py中的方法
+        获取小说信息 - 优先使用增强API
         
         Args:
             book_id (str): 小说ID
@@ -780,8 +868,22 @@ class TomatoNovelAPI:
             dict: 小说信息
         """
         try:
-            # 使用参考.py中的方法获取书籍信息
             headers = get_headers()
+            
+            # 首先尝试使用增强API
+            enhanced_info = get_book_info_enhanced(book_id, headers)
+            if enhanced_info:
+                return {
+                    'isSuccess': True,
+                    'data': {
+                        'data': enhanced_info,
+                        'enhanced': True  # 标记为增强信息
+                    }
+                }
+            
+            # 增强API失败，回退到原方法
+            with print_lock:
+                print("增强API失败，回退到网页爬取方式")
             name, author, description = get_book_info(book_id, headers)
             
             if name:
@@ -792,15 +894,17 @@ class TomatoNovelAPI:
                             'book_name': name,
                             'author': author,
                             'abstract': description,
-                            'book_id': book_id
-                        }
+                            'book_id': book_id,
+                            'source': '番茄小说'
+                        },
+                        'enhanced': False  # 标记为基础信息
                     }
                 }
         except Exception as e:
             print(f"获取书籍信息失败: {e}")
         
-        # API失败
-        print("获取书籍信息失败")
+        # 所有方法都失败
+        print("所有获取书籍信息的方法都失败了")
         return {'isSuccess': False, 'errorMsg': '获取书籍信息失败'}
     
     def get_chapter_content(self, item_ids):
@@ -1110,5 +1214,8 @@ def main():
 
 
 # 当脚本被直接运行时执行主函数
+if __name__ == "__main__":
+    main()
+
 if __name__ == "__main__":
     main()

@@ -1,62 +1,100 @@
-# 🍅 番茄小说下载器
+# Tomato Novel Downloader
 
-一个简洁高效的番茄小说下载工具，支持搜索、下载和自动更新功能。
+基于参考代码修复的番茄小说下载器，支持GUI界面和命令行使用。
 
-## ✨ 主要特性
+## 🚀 主要修复内容
 
-- 🔍 **智能搜索**：快速搜索番茄小说
-- 📚 **批量下载**：支持整本小说下载
-- 📖 **多种格式**：支持TXT和EPUB格式输出
-- 🎨 **现代界面**：美观的图形用户界面
-- 🚀 **自动更新**：内置自动更新系统
-- ⚡ **高性能**：优化的下载算法
+### 1. API处理逻辑修复
+- 修复了 `enhanced_downloader.py` 中 `down_text` 方法的API处理bug
+- 修复了 `tomato_novel_api.py` 中的API调用逻辑
+- 按照参考代码正确实现了所有API类型（fanqie_sdk, fqweb, qyuing, lsjk）的处理
 
-## 🚀 快速开始
+### 2. 线程安全改进
+- 添加了全局线程锁 `print_lock` 确保日志输出的线程安全
+- 所有print语句都使用线程安全的方式输出
 
-### 下载使用（推荐）
+### 3. 错误处理优化
+- 改善了API切换逻辑
+- 添加了完整的异常处理机制
+- 支持程序中断时的状态保存
 
-1. 前往 [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases) 页面
-2. 下载最新版本对应平台的压缩包：
-   - Windows: `TomatoNovelDownloader-*-windows.zip`
-   - Linux: `TomatoNovelDownloader-*-linux.zip`
-   - macOS: `TomatoNovelDownloader-*-macos.zip`
-3. 解压并运行可执行文件
+### 4. 功能增强
+- 保持了原有的GUI进度回调功能
+- 添加了完整的命令行交互界面
+- 支持章节范围选择下载
+- 改进了EPUB格式的封面处理
 
-### 源码运行
+## 📁 文件结构
 
+- `enhanced_downloader.py` - 增强型下载器，支持GUI回调
+- `tomato_novel_api.py` - API调用模块，包含完整的下载功能
+- `gui.py` - 图形用户界面
+- `updater.py` - 自动更新模块
+- `version.py` - 版本信息
+
+## 🛠️ 使用方法
+
+### 命令行使用
 ```bash
-git clone https://github.com/POf-L/Fanqie-novel-Downloader.git
-cd Fanqie-novel-Downloader
-pip install -r requirements.txt
+# 直接运行增强下载器
+python enhanced_downloader.py
+
+# 测试API功能
+python tomato_novel_api.py test
+
+# 使用API模块
+python tomato_novel_api.py search "小说名"
+python tomato_novel_api.py novel_info "书籍ID"
+```
+
+### GUI使用
+```bash
 python gui.py
 ```
 
-## 📖 使用说明
+## 🔧 主要改进
 
-1. **搜索小说**：在搜索框输入关键词，点击搜索
-2. **选择小说**：从搜索结果中选择要下载的小说
-3. **开始下载**：点击下载按钮，等待完成
-4. **查看结果**：下载的文件保存在程序目录
+1. **修复了关键bug**：
+   - qyuing API的内容获取逻辑
+   - lsjk API的响应处理
+   - 批量下载的数据处理
 
-## 🛠️ 开发
+2. **线程安全**：
+   - 所有日志输出都使用线程锁保护
+   - 避免了多线程环境下的输出混乱
 
-- **编程语言**：Python 3.8+
-- **主要依赖**：tkinter, requests, Pillow, ebooklib
-- **构建工具**：PyInstaller
-- **CI/CD**：GitHub Actions
+3. **错误处理**：
+   - 更完善的异常捕获和处理
+   - 程序中断时的状态保存
+   - API失败时的自动切换
+
+4. **用户体验**：
+   - 完整的命令行交互界面
+   - 实时进度显示
+   - 支持章节范围选择
+
+## 📋 依赖要求
+
+```
+requests
+bs4
+fake_useragent
+tqdm
+ebooklib
+PIL
+urllib3
+```
+
+## 🎯 测试
+
+运行测试命令验证修复效果：
+```bash
+python tomato_novel_api.py test
+```
 
 ## 📝 更新日志
 
-每次提交会自动触发GitHub Actions构建和发布，版本号格式：`YYYY.MM.DD.HHMM-commit_hash`
-
-## ⚠️ 免责声明
-
-本工具仅供学习和研究使用，请遵守相关法律法规和网站服务条款。
-
-## 📄 许可证
-
-MIT License
-
----
-
-**如果觉得有用，请给个 ⭐ Star 支持一下！**
+- 修复了API处理逻辑的关键bug
+- 添加了线程安全机制
+- 改善了错误处理和用户体验
+- 保持了原有GUI功能的完整性

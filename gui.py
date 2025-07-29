@@ -1883,11 +1883,16 @@ class ModernNovelDownloaderGUI:
                 ext = 'png'
             elif 'webp' in content_type:
                 ext = 'webp'
+            elif 'heic' in content_type:
+                # EPUB不支持heic格式，转换为jpg
+                ext = 'jpg'
+                print("检测到HEIC格式封面，转换为JPG格式")
             else:
                 ext = 'jpg'  # 默认
             
             # 添加封面
             book.set_cover(f"cover.{ext}", response.content)
+            print(f"成功添加封面 (格式: {ext})")
             return True
             
         except Exception as e:
