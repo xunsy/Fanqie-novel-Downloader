@@ -36,72 +36,105 @@ jobs:
     - name: 生成版本号
       id: version
       run: |
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          timestamp=$(powershell -Command "Get-Date -Format 'yyyy.MM.dd.HHmm'")
-          commit_short="${{ github.sha }}"
-          commit_short=${commit_short:0:7}
-        else
-          timestamp=$(date +"%Y.%m.%d.%H%M")
-          commit_short="${{ github.sha }}"
-          commit_short=${commit_short:0:7}
-        fi
-        version="$timestamp-$commit_short"
-        echo "VERSION=$version" >> $GITHUB_OUTPUT
-        echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
-        echo "Generated version: $version"
-      shell: bash
+        python -c "
+import datetime
+import os
+timestamp = datetime.datetime.now().strftime('%Y.%m.%d.%H%M')
+commit_short = os.environ.get('GITHUB_SHA', '')[:7]
+version = f'{timestamp}-{commit_short}'
+print(f'VERSION={version}')
+print(f'TIMESTAMP={timestamp}')
+with open(os.environ.get('GITHUB_OUTPUT', 'output.txt'), 'a') as f:
+    f.write(f'VERSION={version}\n')
+    f.write(f'TIMESTAMP={timestamp}\n')
+print(f'Generated version: {version}')
+"
       
     - name: 更新版本信息
       run: |
-        # 创建版本信息文件
-        echo '# -*- coding: utf-8 -*-' > version.py
-        echo '# 版本信息文件 - 由GitHub Actions自动生成' >> version.py
-        echo '' >> version.py
-        echo 'import os' >> version.py
-        echo '' >> version.py
-        echo 'VERSION="${{ steps.version.outputs.VERSION }}"' >> version.py
-        echo 'BUILD_TIME="${{ steps.version.outputs.TIMESTAMP }}"' >> version.py
-        echo 'COMMIT_HASH="${{ github.sha }}"' >> version.py
-        echo 'BRANCH="${{ github.ref_name }}"' >> version.py
-        echo 'IS_COMPILED_VERSION = True' >> version.py
-        echo '' >> version.py
-        echo 'def get_version_info():' >> version.py
-        echo '    return {' >> version.py
-        echo "        'version': VERSION," >> version.py
-        echo "        'build_time': BUILD_TIME," >> version.py
-        echo "        'commit_hash': COMMIT_HASH," >> version.py
-        echo "        'branch': BRANCH," >> version.py
-        echo "        'is_compiled': IS_COMPILED_VERSION" >> version.py
-        echo '    }' >> version.py
-        echo '' >> version.py
-        echo 'def get_version_string():' >> version.py
-        echo '    return f"v{VERSION}"' >> version.py
-        echo '    ' >> version.py
-        echo 'def is_development_version():' >> version.py
-        echo '    """判断是否为开发版本"""' >> version.py
-        echo '    return False  # 编译版本总是返回False' >> version.py
-        echo '    ' >> version.py
-        echo 'def get_base_version():' >> version.py
-        echo '    """获取基础版本号（不包含commit hash）用于版本比较"""' >> version.py
-        echo "    if '-' in VERSION:" >> version.py
-        echo "        return VERSION.split('-')[0]" >> version.py
-        echo '    return VERSION' >> version.py
+        python -c "
+import os
 
-        echo "Version file created:"
-        cat version.py
-      shell: bash
-      
-    - name: 安装系统依赖
-      if: runner.os != 'Windows'
+version = os.environ.get('VERSION', '${{ steps.version.outputs.VERSION }}')
+timestamp = os.environ.get('TIMESTAMP', '${{ steps.version.outputs.TIMESTAMP }}')
+commit_hash = os.environ.get('GITHUB_SHA', '')
+branch = os.environ.get('GITHUB_REF_NAME', '')
+
+version_py_content = '''# -*- coding: utf-8 -*-
+# 版本信息文件 - 由GitHub Actions自动生成
+
+import os
+
+VERSION = \"{version}\"
+BUILD_TIME = \"{timestamp}\"
+COMMIT_HASH = \"{commit_hash}\"
+BRANCH = \"{branch}\"
+IS_COMPILED_VERSION = True
+
+def get_version_info():
+    return {{
+        'version': VERSION,
+        'build_time': BUILD_TIME,
+        'commit_hash': COMMIT_HASH,
+        'branch': BRANCH,
+        'is_compiled': IS_COMPILED_VERSION
+    }}
+
+def get_version_string():
+    return f\"v{{VERSION}}\"
+    
+def is_development_version():
+    \"\"\"判断是否为开发版本\"\"\"
+    return False  # 编译版本总是返回False
+    
+def get_base_version():
+    \"\"\"获取基础版本号（不包含commit hash）用于版本比较\"\"\"
+    if '-' in VERSION:
+        return VERSION.split('-')[0]
+    return VERSION
+'''
+
+with open('version.py', 'w', encoding='utf-8') as f:
+    f.write(version_py_content.format(version=version, timestamp=timestamp, commit_hash=commit_hash, branch=branch))
+
+print('Version file created:')
+with open('version.py', 'r', encoding='utf-8') as f:
+    print(f.read())
+"
+
+    - name: 安装系统依赖 (仅Linux)
+      if: runner.os == 'Linux'
       run: |
-        if [ "${{ runner.os }}" = "Linux" ]; then
-          sudo apt-get update
-          sudo apt-get install -y python3-tk tk-dev libxml2-dev libxslt1-dev python3-dev
-        elif [ "${{ runner.os }}" = "macOS" ]; then
-          brew update || true
-          brew install tcl-tk libxml2 libxslt || true
-        fi
-      shell: bash
+        python -c "
+import subprocess
+import sys
+
+print('正在安装Linux系统依赖...')
+try:
+    subprocess.run(['sudo', 'apt-get', 'update'], check=True)
+    subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3-tk', 'tk-dev', 'libxml2-dev', 'libxslt1-dev', 'python3-dev'], check=True)
+    print('✅ Linux系统依赖安装完成')
+except subprocess.CalledProcessError as e:
+    print(f'❌ Linux系统依赖安装失败: {e}')
+    sys.exit(1)
+"
+
+    - name: 安装系统依赖 (仅macOS)
+      if: runner.os == 'macOS'
+      run: |
+        python -c "
+import subprocess
+import sys
+
+print('正在安装macOS系统依赖...')
+try:
+    subprocess.run(['brew', 'update'], check=False)
+    subprocess.run(['brew', 'install', 'tcl-tk', 'libxml2', 'libxslt'], check=False)
+    print('✅ macOS系统依赖安装完成')
+except Exception as e:
+    print(f'⚠️ macOS系统依赖安装出现问题: {e}')
+    print('继续执行，因为这些依赖可能不是必需的')
+"
 
     - name: 缓存Python依赖
       uses: actions/cache@v4
@@ -113,182 +146,226 @@ jobs:
 
     - name: 安装Python依赖
       run: |
-        python -m pip install --upgrade pip
-        echo "安装requirements.txt中的依赖..."
-        
-        # 尝试安装所有依赖，如果失败则逐个安装
-        if ! pip install -r requirements.txt; then
-          echo "批量安装失败，尝试逐个安装..."
-          pip install requests>=2.28.0,<3.0.0
-          pip install Pillow>=9.0.0,<11.0.0
-          pip install ebooklib>=0.18,<0.19
-          pip install fake-useragent>=1.5.0,<2.0.0
-          pip install tqdm>=4.65.0,<5.0.0
-          pip install beautifulsoup4>=4.12.0,<5.0.0
-          pip install urllib3>=1.26.0,<3.0.0
-          # 可选依赖
-          pip install pillow-heif>=1.0.0 || echo "pillow-heif安装失败，但这是可选的"
-        fi
-        
-        echo "安装PyInstaller..."
-        pip install pyinstaller
-        
-        echo "验证关键依赖是否安装成功..."
-        python -c "import bs4; print('✓ beautifulsoup4/bs4 安装成功')"
-        python -c "import fake_useragent; print('✓ fake_useragent 安装成功')"
-        python -c "import tqdm; print('✓ tqdm 安装成功')"
-        python -c "import requests; print('✓ requests 安装成功')"
-        python -c "import PIL; print('✓ Pillow 安装成功')"
-        python -c "import ebooklib; print('✓ ebooklib 安装成功')"
-        echo "所有依赖安装验证完成！"
-      shell: bash
+        python -c "
+import subprocess
+import sys
+import os
+
+# 升级pip
+print('升级pip...')
+subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], check=True)
+
+print('安装requirements.txt中的依赖...')
+# 尝试安装所有依赖
+try:
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'], check=True)
+    print('✅ 批量安装依赖成功')
+except subprocess.CalledProcessError:
+    print('⚠️ 批量安装失败，尝试逐个安装...')
+    dependencies = [
+        'requests>=2.28.0,<3.0.0',
+        'Pillow>=9.0.0,<11.0.0',
+        'ebooklib>=0.18,<0.19',
+        'fake-useragent>=1.5.0,<2.0.0',
+        'tqdm>=4.65.0,<5.0.0',
+        'beautifulsoup4>=4.12.0,<5.0.0',
+        'urllib3>=1.26.0,<3.0.0'
+    ]
+    
+    for dep in dependencies:
+        try:
+            subprocess.run([sys.executable, '-m', 'pip', 'install', dep], check=True)
+            print(f'✅ {dep} 安装成功')
+        except subprocess.CalledProcessError:
+            print(f'❌ {dep} 安装失败')
+    
+    # 安装可选依赖
+    try:
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'pillow-heif>=1.0.0'], check=True)
+        print('✅ pillow-heif 安装成功')
+    except subprocess.CalledProcessError:
+        print('⚠️ pillow-heif安装失败，但这是可选的')
+
+# 安装PyInstaller
+print('安装PyInstaller...')
+subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
+
+# 验证关键依赖
+print('验证关键依赖是否安装成功...')
+modules = [
+    ('bs4', 'beautifulsoup4/bs4'),
+    ('fake_useragent', 'fake_useragent'),
+    ('tqdm', 'tqdm'),
+    ('requests', 'requests'),
+    ('PIL', 'Pillow'),
+    ('ebooklib', 'ebooklib')
+]
+
+failed_modules = []
+for module, name in modules:
+    try:
+        __import__(module)
+        print(f'✅ {name} 安装成功')
+    except ImportError:
+        print(f'❌ {name} 安装失败')
+        failed_modules.append(name)
+
+if failed_modules:
+    print(f'以下模块安装失败: {\", \".join(failed_modules)}')
+    sys.exit(1)
+else:
+    print('所有依赖安装验证完成！')
+"
 
     - name: 测试模块导入
       run: |
-        echo "运行完整的模块导入测试..."
-        if [ -f "test_imports.py" ]; then
-          python test_imports.py
-        else
-          echo "⚠️ test_imports.py 不存在，跳过模块导入测试"
-          echo "手动测试关键模块..."
-          python -c "import requests, PIL, ebooklib, bs4, fake_useragent, tqdm, urllib3; print('✅ 所有关键模块导入成功')"
-        fi
-      shell: bash
-        
+        python -c "
+import sys
+import os
+
+print('运行完整的模块导入测试...')
+
+# 检查是否存在test_imports.py文件
+if os.path.exists('test_imports.py'):
+    print('执行test_imports.py...')
+    try:
+        import test_imports
+        print('✅ test_imports.py 执行成功')
+    except Exception as e:
+        print(f'❌ test_imports.py 执行失败: {e}')
+        sys.exit(1)
+else:
+    print('⚠️ test_imports.py 不存在，跳过模块导入测试')
+    print('手动测试关键模块...')
+    
+    modules = [
+        'requests', 'PIL', 'ebooklib', 'bs4', 'fake_useragent', 
+        'tqdm', 'urllib3', 'tkinter'
+    ]
+    
+    failed_modules = []
+    for module in modules:
+        try:
+            __import__(module)
+            print(f'✅ {module} 导入成功')
+        except ImportError as e:
+            print(f'❌ {module} 导入失败: {e}')
+            failed_modules.append(module)
+    
+    if failed_modules:
+        print(f'以下模块导入失败: {\", \".join(failed_modules)}')
+        sys.exit(1)
+    else:
+        print('✅ 所有关键模块导入成功')
+"
+
     - name: 检查文件存在性
       run: |
-        echo "当前目录文件列表:"
-        ls -la
-        echo "查找Python文件:"
-        find . -name "*.py" -type f
-        echo "检查gui.py是否存在:"
-        if [ -f "gui.py" ]; then
-          echo "✅ gui.py 存在"
-        else
-          echo "❌ gui.py 不存在"
-        fi
-      shell: bash
+        python -c "
+import os
+import glob
+
+print('当前目录文件列表:')
+for item in os.listdir('.'):
+    if os.path.isdir(item):
+        print(f'  [DIR] {item}')
+    else:
+        print(f'  [FILE] {item}')
+
+print('查找Python文件:')
+py_files = glob.glob('**/*.py', recursive=True)
+for py_file in py_files:
+    print(f'  {py_file}')
+
+print('检查关键文件是否存在:')
+key_files = ['gui.py', 'build.spec', 'requirements.txt']
+for file in key_files:
+    if os.path.exists(file):
+        print(f'  ✅ {file} 存在')
+    else:
+        print(f'  ❌ {file} 不存在')
+"
 
     - name: 编译可执行文件
       run: |
-        echo "开始编译可执行文件..."
-        
-        # 检查是否存在build.spec文件
-        if [ -f "build.spec" ]; then
-          echo "✅ 使用build.spec配置文件编译"
-          pyinstaller build.spec --clean --noconfirm
-        else
-          echo "⚠️ 未找到build.spec，使用默认配置编译"
-          pyinstaller --onefile --windowed \
-            --name="TomatoNovelDownloader" \
-            --add-data="version.py:." \
-            --hidden-import=bs4 \
-            --hidden-import=beautifulsoup4 \
-            --hidden-import=fake_useragent \
-            --hidden-import=tqdm \
-            --hidden-import=requests \
-            --hidden-import=urllib3 \
-            --hidden-import=ebooklib \
-            --hidden-import=PIL \
-            --hidden-import=PIL.Image \
-            --hidden-import=PIL.ImageTk \
-            gui.py
-        fi
+        python build_app.py
 
-        # 检查编译结果
-        echo "编译完成，检查输出："
-        ls -la dist/
-        
-        # 验证可执行文件是否创建成功
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          if [ -f "dist/TomatoNovelDownloader.exe" ]; then
-            echo "✅ Windows可执行文件编译成功"
-            file dist/TomatoNovelDownloader.exe || echo "文件信息获取失败"
-          else
-            echo "❌ Windows可执行文件编译失败"
-            exit 1
-          fi
-        else
-          if [ -f "dist/TomatoNovelDownloader" ]; then
-            echo "✅ Unix可执行文件编译成功"
-            file dist/TomatoNovelDownloader || echo "文件信息获取失败"
-            chmod +x dist/TomatoNovelDownloader
-          else
-            echo "❌ Unix可执行文件编译失败"
-            exit 1
-          fi
-        fi
-      shell: bash
-      
     - name: 创建发布包
       run: |
-        version="${{ steps.version.outputs.VERSION }}"
-        artifact_name="${{ matrix.artifact_name }}"
+        python -c "
+import os
+import zipfile
+import json
+import shutil
 
-        # 创建发布目录结构
-        mkdir -p release/TomatoNovelDownloader-$version-$artifact_name
+version = os.environ.get('VERSION', '${{ steps.version.outputs.VERSION }}')
+artifact_name = '${{ matrix.artifact_name }}'
+repository = os.environ.get('GITHUB_REPOSITORY', '${{ github.repository }}')
+timestamp = os.environ.get('TIMESTAMP', '${{ steps.version.outputs.TIMESTAMP }}')
+commit_hash = os.environ.get('GITHUB_SHA', '${{ github.sha }}')
+branch_name = os.environ.get('GITHUB_REF_NAME', '${{ github.ref_name }}')
 
-        # 根据平台复制可执行文件
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          # Windows平台
-          if [ -f "dist/TomatoNovelDownloader.exe" ]; then
-            cp dist/TomatoNovelDownloader.exe "release/TomatoNovelDownloader-$version-$artifact_name/"
-            echo "✅ Windows可执行文件已复制"
-          else
-            echo "❌ 未找到Windows可执行文件"
-            ls -la dist/
-            exit 1
-          fi
-        else
-          # Linux/macOS平台
-          if [ -f "dist/TomatoNovelDownloader" ]; then
-            cp dist/TomatoNovelDownloader "release/TomatoNovelDownloader-$version-$artifact_name/"
-            chmod +x "release/TomatoNovelDownloader-$version-$artifact_name/TomatoNovelDownloader"
-            echo "✅ Unix可执行文件已复制"
-          else
-            echo "❌ 未找到Unix可执行文件"
-            ls -la dist/
-            exit 1
-          fi
-        fi
+# 创建发布目录结构
+release_dir = f'release/TomatoNovelDownloader-{version}-{artifact_name}'
+os.makedirs(release_dir, exist_ok=True)
 
-        # 创建压缩包
-        cd release
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          # Windows 使用 PowerShell 自带的 Compress-Archive
-          powershell -Command "Compress-Archive -Path 'TomatoNovelDownloader-$version-$artifact_name' -DestinationPath 'TomatoNovelDownloader-$version-$artifact_name.zip'"
-        else
-          # Linux/macOS 使用 zip 命令
-          zip -r "TomatoNovelDownloader-$version-$artifact_name.zip" "TomatoNovelDownloader-$version-$artifact_name"
-        fi
-        cd ..
+# 根据平台复制可执行文件
+if os.name == 'nt':  # Windows
+    src_exe = 'dist/TomatoNovelDownloader.exe'
+    dst_exe = f'{release_dir}/TomatoNovelDownloader.exe'
+else:  # Linux/macOS
+    src_exe = 'dist/TomatoNovelDownloader'
+    dst_exe = f'{release_dir}/TomatoNovelDownloader'
 
-        # 创建更新信息文件
-        timestamp="${{ steps.version.outputs.TIMESTAMP }}"
-        repository="${{ github.repository }}"
-        commit_hash="${{ github.sha }}"
-        branch_name="${{ github.ref_name }}"
-        
-        echo '{' > "release/update_info_$artifact_name.json"
-        echo "  \"version\": \"$version\"," >> "release/update_info_$artifact_name.json"
-        echo "  \"platform\": \"$artifact_name\"," >> "release/update_info_$artifact_name.json"
-        echo "  \"build_time\": \"$timestamp\"," >> "release/update_info_$artifact_name.json"
-        echo "  \"download_url\": \"https://github.com/$repository/releases/download/v$version/TomatoNovelDownloader-$version-$artifact_name.zip\"," >> "release/update_info_$artifact_name.json"
-        echo "  \"changelog\": \"自动构建版本 $version\"," >> "release/update_info_$artifact_name.json"
-        echo "  \"commit\": \"$commit_hash\"," >> "release/update_info_$artifact_name.json"
-        echo "  \"branch\": \"$branch_name\"" >> "release/update_info_$artifact_name.json"
-        echo '}' >> "release/update_info_$artifact_name.json"
+if os.path.exists(src_exe):
+    shutil.copy(src_exe, dst_exe)
+    if os.name != 'nt':
+        os.chmod(dst_exe, 0o755)
+    print(f'✅ 可执行文件已复制: {dst_exe}')
+else:
+    print(f'❌ 未找到可执行文件: {src_exe}')
+    if os.path.exists('dist'):
+        print('dist目录内容:')
+        for f in os.listdir('dist'):
+            print(f'  {f}')
+    exit(1)
 
-        echo "发布包创建完成："
-        ls -la release/
-        echo "压缩包内容："
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          powershell -Command "Expand-Archive -Path 'release/TomatoNovelDownloader-$version-$artifact_name.zip' -DestinationPath 'temp-check' -Force; Get-ChildItem -Recurse temp-check"
-        else
-          unzip -l "release/TomatoNovelDownloader-$version-$artifact_name.zip"
-        fi
-      shell: bash
-      
+# 创建压缩包
+zip_filename = f'release/TomatoNovelDownloader-{version}-{artifact_name}.zip'
+with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+    for root, dirs, files in os.walk(release_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            arc_path = os.path.relpath(file_path, 'release')
+            zipf.write(file_path, arc_path)
+
+print('✅ 压缩包创建完成')
+
+# 创建更新信息文件
+update_info = {
+    'version': version,
+    'platform': artifact_name,
+    'build_time': timestamp,
+    'download_url': f'https://github.com/{repository}/releases/download/v{version}/TomatoNovelDownloader-{version}-{artifact_name}.zip',
+    'changelog': f'自动构建版本 {version}',
+    'commit': commit_hash,
+    'branch': branch_name
+}
+
+update_info_file = f'release/update_info_{artifact_name}.json'
+with open(update_info_file, 'w', encoding='utf-8') as f:
+    json.dump(update_info, f, ensure_ascii=False, indent=2)
+
+print('发布包创建完成：')
+for f in os.listdir('release'):
+    print(f'  {f}')
+
+print('压缩包内容：')
+with zipfile.ZipFile(zip_filename, 'r') as zipf:
+    for info in zipf.infolist():
+        print(f'  {info.filename}')
+"
+
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
@@ -313,31 +390,60 @@ jobs:
     - name: 获取最新的版本号
       id: get_version
       run: |
-        # 从下载的构建产物中提取版本号
-        version_file=$(find artifacts/ -name "update_info_*.json" | head -n 1)
-        if [ -n "$version_file" ]; then
-          version=$(jq -r '.version' "$version_file")
-          timestamp=$(jq -r '.build_time' "$version_file")
-          echo "VERSION=$version" >> $GITHUB_OUTPUT
-          echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
-          echo "Found version: $version"
-        else
-          # fallback方案
-          timestamp=$(date +"%Y.%m.%d.%H%M")
-          commit_short="${{ github.sha }}"
-          commit_short=${commit_short:0:7}
-          version="$timestamp-$commit_short"
-          echo "VERSION=$version" >> $GITHUB_OUTPUT
-          echo "TIMESTAMP=$timestamp" >> $GITHUB_OUTPUT
-          echo "Fallback version: $version"
-        fi
+        python -c "
+import os
+import json
+import glob
+
+# 从下载的构建产物中提取版本号
+version_files = glob.glob('artifacts/*/update_info_*.json')
+if version_files:
+    with open(version_files[0], 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        version = data['version']
+        timestamp = data['build_time']
+        with open(os.environ.get('GITHUB_OUTPUT', 'output.txt'), 'a') as out:
+            out.write(f'VERSION={version}\n')
+            out.write(f'TIMESTAMP={timestamp}\n')
+        print(f'Found version: {version}')
+else:
+    # fallback方案
+    import datetime
+    timestamp = datetime.datetime.now().strftime('%Y.%m.%d.%H%M')
+    commit_short = os.environ.get('GITHUB_SHA', '')[:7]
+    version = f'{timestamp}-{commit_short}'
+    with open(os.environ.get('GITHUB_OUTPUT', 'output.txt'), 'a') as out:
+        out.write(f'VERSION={version}\n')
+        out.write(f'TIMESTAMP={timestamp}\n')
+    print(f'Fallback version: {version}')
+"
 
     - name: 整理发布文件
       run: |
-        mkdir -p release
-        find artifacts/ -name "*.zip" -exec cp {} release/ \;
-        find artifacts/ -name "*.json" -exec cp {} release/ \;
-        ls -la release/
+        python -c "
+import os
+import shutil
+import glob
+
+print('整理发布文件...')
+os.makedirs('release', exist_ok=True)
+
+# 复制所有zip文件
+zip_files = glob.glob('artifacts/*/*.zip')
+for zip_file in zip_files:
+    shutil.copy(zip_file, 'release/')
+    print(f'  已复制: {os.path.basename(zip_file)}')
+
+# 复制所有json文件
+json_files = glob.glob('artifacts/*/*.json')
+for json_file in json_files:
+    shutil.copy(json_file, 'release/')
+    print(f'  已复制: {os.path.basename(json_file)}')
+
+print('release目录内容:')
+for f in os.listdir('release'):
+    print(f'  {f}')
+"
 
     - name: 创建Release
       uses: softprops/action-gh-release@v2
