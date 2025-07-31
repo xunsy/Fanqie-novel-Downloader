@@ -7,53 +7,48 @@
 """
 
 import time
-import requests
-import bs4
-import re
-import os
-import random
-import json
-import urllib3
 import threading
 import signal
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
-from collections import OrderedDict
-from fake_useragent import UserAgent
-from typing import Optional, Dict, Callable
+import os
+import json
+import re
+import random
+import requests
+import bs4
 from ebooklib import epub
-import base64
-import gzip
-from urllib.parse import urlencode
+from fake_useragent import UserAgent
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, Callable, Dict
 
-# 禁用SSL证书验证警告
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-requests.packages.urllib3.disable_warnings()
+# 导入新的模块化组件
+try:
+    from config import CONFIG, Config
+    from network import NetworkManager
+    from content_processor import ContentProcessor
+    from download_engine import DownloadEngine
+    from file_output import FileOutputManager
+    from state_manager import StateManager
+except ImportError as e:
+    print(f"模块导入失败: {e}")
+    # 提供基本配置作为后备
+    CONFIG = {
+        "max_workers": 4,
+        "request_timeout": 15,
+        "status_file": "chapter.json",
+        "auth_token": "wcnmd91jb",
+        "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
+        "api_endpoints": [],
+        "batch_config": {
+            "name": "qyuing",
+            "enabled": True,
+            "max_batch_size": 290,
+            "timeout": 10
+        }
+    }
 
 # 全局锁
 print_lock = threading.Lock()
-
-# 全局配置
-CONFIG = {
-    "max_workers": 4,
-    "max_retries": 3,
-    "request_timeout": 15,
-    "status_file": "chapter.json",
-    "request_rate_limit": 0.4,
-    "auth_token": "wcnmd91jb",
-    "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
-    "api_endpoints": [],
-    "batch_config": {
-        "name": "qyuing",
-        "base_url": None,
-        "batch_endpoint": None,
-        "token": None,
-        "max_batch_size": 290,
-        "timeout": 10,
-        "enabled": True
-    }
-}
 
 class EnhancedNovelDownloader:
     def __init__(self, progress_callback: Optional[Callable] = None):
@@ -307,62 +302,80 @@ class EnhancedNovelDownloader:
                         verify=False
                     )
                     
-                    if response.status_code != 200:
-                        continue
-                    
-                    try:
-                        data = response.json()
-                        content = data.get("data", {}).get("content", "")
-                        if content:
-                            processed = self.process_chapter_content(content)
-                            return data.get("data", {}).get("title", ""), processed
-                    except json.JSONDecodeError:
-                        continue
-
-                elif api_name == "fqweb":
-                    response = self.make_request(
-                        current_endpoint.format(chapter_id=chapter_id),
-                        headers=headers.copy(),
-                        timeout=CONFIG["request_timeout"],
-                        verify=False
-                    )
-                    
-                    try:
-                        data = response.json()
-                        if data.get("data", {}).get("code") in ["0", 0]:
-                            content = data.get("data", {}).get("data", {}).get("content", "")
+                    if response and response.status_code == 200:
+                        try:
+                            data = response.json()
+                            content = data.get("data", {}).get("content", "")
                             if content:
                                 processed = self.process_chapter_content(content)
-                                return "", processed
-                    except:
-                        continue
+                                return data.get("data", {}).get("title", ""), processed
+                        except json.JSONDecodeError:
+                            continue
+
+                elif api_name == "fqweb":
+                    # 修复URL格式化问题
+                    if "{chapter_id}" in current_endpoint:
+                        url = current_endpoint.format(chapter_id=chapter_id)
+                    else:
+                        url = f"{current_endpoint}?book_id={book_id}&chapter_id={chapter_id}"
+                    
+                    response = self.make_request(
+                        url,
+                        headers=headers.copy(),
+                        timeout=CONFIG["request_timeout"],
+                        verify=False
+                    )
+                    
+                    if response and response.status_code == 200:
+                        try:
+                            data = response.json()
+                            if data.get("data", {}).get("code") in ["0", 0]:
+                                content = data.get("data", {}).get("data", {}).get("content", "")
+                                if content:
+                                    processed = self.process_chapter_content(content)
+                                    return "", processed
+                        except:
+                            continue
 
                 elif api_name == "qyuing":
+                    # 修复URL格式化问题
+                    if "{chapter_id}" in current_endpoint:
+                        url = current_endpoint.format(chapter_id=chapter_id)
+                    else:
+                        url = f"{current_endpoint}?chapter_id={chapter_id}"
+                    
                     response = self.make_request(
-                        current_endpoint.format(chapter_id=chapter_id),
+                        url,
                         headers=headers.copy(),
                         timeout=CONFIG["request_timeout"],
                         verify=False
                     )
                     
-                    try:
-                        data = response.json()
-                        if data.get("code") == 0:
-                            content = data.get("data", {}).get(chapter_id, {}).get("content", "")
-                            if content:
-                                return "", self.process_chapter_content(content)
-                    except:
-                        continue
+                    if response and response.status_code == 200:
+                        try:
+                            data = response.json()
+                            if data.get("code") == 0:
+                                content = data.get("data", {}).get(chapter_id, {}).get("content", "")
+                                if content:
+                                    return "", self.process_chapter_content(content)
+                        except:
+                            continue
 
                 elif api_name == "lsjk":
+                    # 修复URL格式化问题
+                    if "{chapter_id}" in current_endpoint:
+                        url = current_endpoint.format(chapter_id=chapter_id)
+                    else:
+                        url = f"{current_endpoint}?chapter_id={chapter_id}"
+                    
                     response = self.make_request(
-                        current_endpoint.format(chapter_id=chapter_id),
+                        url,
                         headers=headers.copy(),
                         timeout=CONFIG["request_timeout"],
                         verify=False
                     )
                     
-                    if response.text:
+                    if response and response.text:
                         try:
                             paragraphs = re.findall(r'<p idx="\d+">(.*?)</p>', response.text)
                             cleaned = "\n".join(p.strip() for p in paragraphs if p.strip())
