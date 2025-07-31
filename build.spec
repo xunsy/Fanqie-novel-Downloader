@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+import sys
+sys.setrecursionlimit(sys.getrecursionlimit() * 5)
 
 block_cipher = None
 
@@ -14,7 +16,6 @@ a = Analysis(
     ],
     hiddenimports=[
         'bs4',
-        'beautifulsoup4',
         'fake_useragent',
         'tqdm',
         'requests',
@@ -48,7 +49,22 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'matplotlib',
+        'pandas',
+        'numpy',
+        'scipy',
+        'bokeh',
+        'h5py',
+        'lz4',
+        'jinja2',
+        'cloudpickle',
+        'dask',
+        'distributed',
+        'fsspec',
+        'pyarrow',
+        'pytz'
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
