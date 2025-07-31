@@ -48,7 +48,7 @@ with open(os.environ.get('GITHUB_OUTPUT', 'output.txt'), 'a') as f:
     f.write(f'VERSION={version}\n')
     f.write(f'TIMESTAMP={timestamp}\n')
 print(f'Generated version: {version}')
-"
+        "
       
     - name: 更新版本信息
       run: |
