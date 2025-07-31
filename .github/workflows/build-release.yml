@@ -36,19 +36,19 @@ jobs:
     - name: 生成版本号
       id: version
       run: |
-        python -c "
+        python -c '
 import datetime
 import os
-timestamp = datetime.datetime.now().strftime('%Y.%m.%d.%H%M')
-commit_short = os.environ.get('GITHUB_SHA', '')[:7]
-version = f'{timestamp}-{commit_short}'
-print(f'VERSION={version}')
-print(f'TIMESTAMP={timestamp}')
-with open(os.environ.get('GITHUB_OUTPUT', 'output.txt'), 'a') as f:
-    f.write(f'VERSION={version}\n')
-    f.write(f'TIMESTAMP={timestamp}\n')
-print(f'Generated version: {version}')
-        "
+timestamp = datetime.datetime.now().strftime("%Y.%m.%d.%H%M")
+commit_short = os.environ.get("GITHUB_SHA", "")[:7]
+version = f"{timestamp}-{commit_short}"
+print(f"VERSION={version}")
+print(f"TIMESTAMP={timestamp}")
+with open(os.environ.get("GITHUB_OUTPUT", "output.txt"), "a") as f:
+    f.write(f"VERSION={version}\n")
+    f.write(f"TIMESTAMP={timestamp}\n")
+print(f"Generated version: {version}")
+        '
       
     - name: 更新版本信息
       run: |

@@ -45,7 +45,7 @@ class DownloadEngine:
         """
         apis = [
             ("fanqie_sdk", f"https://novel.snssdk.com/api/novel/book/reader/full/v1/?device_platform=android&parent_id=0&aid=2329&platform_id=1&group_id={chapter_id}&item_id={chapter_id}"),
-            ("fqweb", f"http://fqweb.jsj66.com/chapter?book_id={book_id}&chapter_id={chapter_id}"),
+            ("fqweb", f"http://fqweb.jsj66.com/content?item_id={chapter_id}"),
             ("qyuing", f"https://novel.snssdk.com/api/novel/book/reader/full/v1/?device_platform=android&parent_id=0&aid=2329&platform_id=1&group_id={chapter_id}&item_id={chapter_id}"),
             ("lsjk", f"https://novel.snssdk.com/api/novel/book/reader/full/v1/?device_platform=android&parent_id=0&aid=2329&platform_id=1&group_id={chapter_id}&item_id={chapter_id}")
         ]

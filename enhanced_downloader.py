@@ -313,11 +313,7 @@ class EnhancedNovelDownloader:
                             continue
 
                 elif api_name == "fqweb":
-                    # 修复URL格式化问题
-                    if "{chapter_id}" in current_endpoint:
-                        url = current_endpoint.format(chapter_id=chapter_id)
-                    else:
-                        url = f"{current_endpoint}?book_id={book_id}&chapter_id={chapter_id}"
+                    url = f"http://fqweb.jsj66.com/content?item_id={chapter_id}"
                     
                     response = self.make_request(
                         url,
