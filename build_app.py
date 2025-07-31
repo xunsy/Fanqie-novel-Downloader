@@ -25,7 +25,7 @@ def build_executable():
             sys.executable, "-m", "PyInstaller",
             "--onefile", "--windowed",
             "--name=TomatoNovelDownloader",
-            "--add-data=version.py;.",
+            "--add-data=version.py" + (";" if os.name == "nt" else ":") + ".",
             "--hidden-import=bs4",
             "--hidden-import=beautifulsoup4",
             "--hidden-import=fake_useragent",

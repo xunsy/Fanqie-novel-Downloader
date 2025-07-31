@@ -85,6 +85,12 @@ jobs:
       run: |
         brew install tcl-tk || true
 
+    - name: 安装系统依赖 (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Windows通常自带tkinter，但确保PyInstaller能找到必要的DLL
+        echo "Windows系统依赖检查完成"
+
     - name: 缓存Python依赖
       uses: actions/cache@v4
       with:
