@@ -11,16 +11,35 @@ import sys
 import os
 import shutil
 
+# 导入编码工具（如果存在）
+try:
+    from encoding_utils import safe_print, setup_utf8_encoding
+    # 确保UTF-8编码设置
+    setup_utf8_encoding()
+    # 使用安全的print函数
+    print = safe_print
+except ImportError:
+    # 如果编码工具不存在，使用基本的编码设置
+    if sys.platform.startswith('win'):
+        import locale
+        try:
+            locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+        except locale.Error:
+            try:
+                locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+            except locale.Error:
+                pass  # 使用默认编码
+
 def build_executable():
     """编译可执行文件"""
-    print("开始编译可执行文件...")
+    print("Starting build process...")
     
     # 检查build.spec文件
     if os.path.exists("build.spec"):
-        print("使用build.spec配置文件编译")
+        print("Using build.spec configuration file")
         cmd = [sys.executable, "-m", "PyInstaller", "build.spec", "--clean", "--noconfirm"]
     else:
-        print("未找到build.spec，使用默认配置编译")
+        print("build.spec not found, using default configuration")
         cmd = [
             sys.executable, "-m", "PyInstaller",
             "--onefile", "--windowed",
@@ -40,21 +59,21 @@ def build_executable():
         ]
     
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print("编译成功")
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+        print("Build successful")
         print(result.stdout)
         return True
     except subprocess.CalledProcessError as e:
-        print("编译失败")
-        print(f"错误输出: {e.stderr}")
+        print("Build failed")
+        print(f"Error output: {e.stderr}")
         return False
 
 def check_output():
     """检查编译输出"""
-    print("检查编译输出...")
+    print("Checking build output...")
     if os.path.exists("dist"):
         files = os.listdir("dist")
-        print(f"dist目录内容: {files}")
+        print(f"dist directory contents: {files}")
         
         # 检查可执行文件
         exe_name = "TomatoNovelDownloader.exe" if os.name == "nt" else "TomatoNovelDownloader"
@@ -62,26 +81,26 @@ def check_output():
         
         if os.path.exists(exe_path):
             size = os.path.getsize(exe_path)
-            print(f"可执行文件创建成功: {exe_name} ({size} bytes)")
+            print(f"Executable created successfully: {exe_name} ({size} bytes)")
             return True
         else:
-            print(f"可执行文件不存在: {exe_path}")
+            print(f"Executable not found: {exe_path}")
             return False
     else:
-        print("dist目录不存在")
+        print("dist directory does not exist")
         return False
 
 def main():
     """主函数"""
     if build_executable():
         if check_output():
-            print("编译完成！")
+            print("Build completed successfully!")
             return True
         else:
-            print("编译输出检查失败")
+            print("Build output check failed")
             return False
     else:
-        print("编译失败")
+        print("Build failed")
         return False
 
 if __name__ == "__main__":

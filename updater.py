@@ -69,15 +69,15 @@ class AutoUpdater:
             release_info = response.json()
             latest_version = release_info['tag_name'].lstrip('v')
             
-            print(f"[调试] 检查更新:")
-            print(f"[调试] 本地版本: {self.current_version}")
-            print(f"[调试] GitHub版本: {latest_version}")
-            print(f"[调试] 是否开发版本: {self.is_development}")
-            print(f"[调试] 版本信息: {self.version_info}")
+            print(f"[DEBUG] Checking for updates:")
+            print(f"[DEBUG] Local version: {self.current_version}")
+            print(f"[DEBUG] GitHub version: {latest_version}")
+            print(f"[DEBUG] Is development version: {self.is_development}")
+            print(f"[DEBUG] Version info: {self.version_info}")
             
             # 改进的版本比较逻辑
             should_update = self._should_update(latest_version, self.current_version)
-            print(f"[调试] 是否需要更新: {should_update}")
+            print(f"[DEBUG] Should update: {should_update}")
             
             if should_update:
                 # 查找适合当前平台的下载链接

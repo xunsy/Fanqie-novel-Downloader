@@ -15,9 +15,9 @@ from updater import AutoUpdater, get_current_version
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
-    print("HEIC格式支持已启用")
+    print("HEIC format support enabled")
 except ImportError:
-    print("pillow-heif未安装，HEIC格式可能无法显示")
+    print("pillow-heif not installed, HEIC format may not display properly")
 
 class ModernNovelDownloaderGUI:
     def __init__(self, root):

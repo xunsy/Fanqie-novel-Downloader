@@ -49,7 +49,7 @@ class EnhancedNovelDownloader:
         try:
             # 初始化API端点
             if not CONFIG["api_endpoints"]:
-                print("正在从服务器获取API列表...")
+                print("Fetching API list from server...")
                 self.network_manager.fetch_api_endpoints_from_server()
             
             headers = self.network_manager.get_headers()
